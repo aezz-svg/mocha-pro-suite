@@ -10,12 +10,10 @@ function getGoogleDriveClient() {
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!clientEmail || !privateKey || !folderId) {
-    throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم (.env.local).');
+    throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم.');
   }
 
   const formattedKey = privateKey.replace(/\\n/g, '\n');
-  
-  // التصحيح الجذري هنا: استخدام نطاق الصلاحيات الشامل لتجاوز خطأ 403 نهائياً
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: formattedKey,
@@ -26,7 +24,7 @@ function getGoogleDriveClient() {
 }
 
 /**
- * دالة FIFO للاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم تلقائياً
+ * دالة FIFO الذكية: الاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم أوتوماتيكياً
  */
 async function enforceVaultStorageLimit(drive: any, folderId: string) {
   try {
@@ -51,39 +49,38 @@ export async function POST(req: NextRequest) {
     const { folderId, googleDrive } = getGoogleDriveClient();
     const contentType = req.headers.get('content-type') || '';
 
-    // معالجة الرفع عبر الخادم الوسيط (يتجاوز CORS تماماً ويحل مشكلة 403)
-    if (!contentType.includes('application/json')) {
-      const originalName = req.headers.get('x-file-name') ? decodeURIComponent(req.headers.get('x-file-name')!) : 'document.pdf';
-      const safeFileName = `MochaVault_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      
-      const fileBuffer = Buffer.from(await req.arrayBuffer());
-
-      // رفع الملف مباشرة عبر مكتبة جوجل الرسمية وصلاحيات الخادم المضمونة
-      const response = await googleDrive.files.create({
-        requestBody: {
-          name: safeFileName,
-          parents: [folderId],
-          description: 'Mocha Pro Suite - Server Proxy Secure Upload',
-        },
-        media: {
-          mimeType: 'application/pdf',
-          body: Readable.from(fileBuffer),
-        },
-      });
-
-      // تطبيق سياسة الاحتفاظ بآخر 3 ملفات فقط (FIFO)
-      await enforceVaultStorageLimit(googleDrive, folderId);
-
-      return NextResponse.json({
-        success: true,
-        filename: response.data.name,
-        message: 'تم رفع ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.'
-      });
+    // 1. إذا كان الطلب عبارة عن JSON (مثل الاستعلامات أو التهيئة)
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      return NextResponse.json({ success: true, ...body });
     }
 
-    // الطلبات الأخرى (JSON)
-    const body = await req.json();
-    return NextResponse.json({ success: true, ...body });
+    // 2. إذا كان الطلب رفع ملف ثنائي مباشرة عبر الخادم الوسيط
+    const originalName = req.headers.get('x-file-name') ? decodeURIComponent(req.headers.get('x-file-name')!) : 'document.pdf';
+    const safeFileName = `MochaVault_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    
+    const fileBuffer = Buffer.from(await req.arrayBuffer());
+
+    const response = await googleDrive.files.create({
+      requestBody: {
+        name: safeFileName,
+        parents: [folderId],
+        description: 'Mocha Pro Suite - Sovereign Vault Upload',
+      },
+      media: {
+        mimeType: 'application/pdf',
+        body: Readable.from(fileBuffer),
+      },
+    });
+
+    // تطبيق سياسة التنظيف الذكي FIFO (إبقاء آخر 3 ملفات فقط)
+    await enforceVaultStorageLimit(googleDrive, folderId);
+
+    return NextResponse.json({
+      success: true,
+      filename: response.data.name,
+      message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.'
+    });
 
   } catch (error: any) {
     console.error('Server Proxy Upload Error:', error);
