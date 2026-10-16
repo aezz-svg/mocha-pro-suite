@@ -14,10 +14,12 @@ function getGoogleDriveClient() {
   }
 
   const formattedKey = privateKey.replace(/\\n/g, '\n');
+  
+  // التصحيح الجذري هنا: استخدام نطاق الصلاحيات الشامل لتجاوز خطأ 403 نهائياً
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: formattedKey,
-    scopes: ['https://www.googleapis.com/auth/drive.file'],
+    scopes: ['https://www.googleapis.com/auth/drive'],
   });
 
   return { folderId, googleDrive: google.drive({ version: 'v3', auth }) };
