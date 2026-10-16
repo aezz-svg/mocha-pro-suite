@@ -12,7 +12,6 @@ function getGoogleDriveClient() {
     throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم (.env.local).');
   }
 
-  // تصحيح هيكلية المفتاح الخاص ليتعامل مع الأسطر الجديدة
   const formattedKey = privateKey.replace(/\\n/g, '\n');
 
   const auth = new google.auth.JWT({
@@ -21,48 +20,82 @@ function getGoogleDriveClient() {
     scopes: ['https://www.googleapis.com/auth/drive.file'],
   });
 
-  return { folderId, authClient: auth };
+  return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
+}
+
+/**
+ * دالة ذكية لإدارة سعة التخزين: الاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم أوتوماتيكياً
+ */
+async function enforceVaultStorageLimit(drive: any, folderId: string) {
+  try {
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      orderBy: 'createdTime desc',
+      pageSize: 50,
+    });
+
+    const files = res.data.files || [];
+    // إذا وصل عدد الملفات 3 أو أكثر، نحذف الملفات التي تزيد عن آخر ملفين لتفسح المجال للثالث
+    if (files.length >= 3) {
+      for (let i = 2; i < files.length; i++) {
+        await drive.files.delete({ fileId: files[i].id });
+      }
+    }
+  } catch (err) {
+    console.error('Vault cleanup warning:', err);
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { filename, fileType, action } = await req.json();
-    const { folderId, authClient } = getGoogleDriveClient();
-    
-    const tokenResponse = await authClient.getAccessToken();
-    const accessToken = tokenResponse.token;
+    const contentType = req.headers.get('content-type') || '';
+    const { folderId, authClient, googleDrive } = getGoogleDriveClient();
 
-    if (!accessToken) {
-      throw new Error('فشل المصادقة مع سحابة جوجل: رمز الوصول مفقود.');
-    }
+    // 1. مرحلة تهيئة الرابط المباشر للرفع وتطبيق سياسة التنظيف
+    if (contentType.includes('application/json')) {
+      const { filename, fileType, action } = await req.json();
+      
+      const tokenResponse = await authClient.getAccessToken();
+      const accessToken = tokenResponse.token;
 
-    const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-    // رابط الرفع المباشر (Resumable Upload) الخاص بجوجل درايف
-    const googleResponse = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Upload-Content-Type': fileType || 'application/pdf',
-        },
-        body: JSON.stringify({
-          name: safeFileName,
-          parents: [folderId],
-          description: `Mocha Pro Suite - Direct Uplink Process: ${action || 'upload_vault'}`,
-        }),
+      if (!accessToken) {
+        throw new Error('فشل المصادقة مع سحابة جوجل: رمز الوصول مفقود.');
       }
-    );
 
-    const uploadUrl = googleResponse.headers.get('Location');
-    if (!uploadUrl) {
-      const errText = await googleResponse.text();
-      throw new Error(`فشل استجابة محرك السحابة: ${errText}`);
+      // تنظيف وإعداد اسم الملف
+      const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      // طلب رابط رفع تدفقي مباشر (Resumable Upload)
+      const googleResponse = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Upload-Content-Type': fileType || 'application/pdf',
+          },
+          body: JSON.stringify({
+            name: safeFileName,
+            parents: [folderId],
+            description: `Mocha Pro Suite - Direct Uplink: ${action || 'upload_vault'}`,
+          }),
+        }
+      );
+
+      const uploadUrl = googleResponse.headers.get('Location');
+      if (!uploadUrl) {
+        const errText = await googleResponse.text();
+        throw new Error(`فشل استجابة محرك السحابة: ${errText}`);
+      }
+
+      // تنفيذ سياسة الاحتفاظ بآخر 3 ملفات فقط في الخلفية
+      await enforceVaultStorageLimit(googleDrive, folderId);
+
+      return NextResponse.json({ success: true, uploadUrl, safeFileName });
     }
 
-    return NextResponse.json({ success: true, uploadUrl, safeFileName });
+    return NextResponse.json({ error: 'نوع الطلب غير مدعوم في المحرك السحابي.' }, { status: 400 });
   } catch (error: any) {
     console.error('Mocha Execution Link Failure:', error);
     return NextResponse.json({ error: error.message || 'خطأ داخلي في الخادم السحابي' }, { status: 500 });
@@ -70,5 +103,17 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'Mocha Direct Storage Uplink is Stabilized.' });
+  try {
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const res = await googleDrive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      orderBy: 'createdTime desc',
+      pageSize: 3,
+      fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
+    });
+
+    return NextResponse.json({ success: true, files: res.data.files || [] });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
