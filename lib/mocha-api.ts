@@ -37,70 +37,87 @@ export function triggerDownload(url: string, filename: string): void {
 }
 
 /**
- * دالة الرفع الآمنة عبر الخادم الوسيط مع تتبع دقيق للنسبة المئوية (%)
+ * دالة الرفع المباشر القابل للاستئناف (Resumable Upload) الآمنة تماماً للملفات الكبيرة
+ * تتجاوز خطأ 413 (Content Too Large) وتدعم مؤشر التقدم (%)
  */
 export function uploadEngineFile(
   file: File, 
   operation: string,
   onProgress?: (progress: number, speedBytesPerSec: number) => void
 ): Promise<EngineResponse> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    let lastLoaded = 0;
-    let lastTime = Date.now();
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 1. طلب رابط الرفع المباشر من الخادم
+      const initResponse = await fetch('/api/process-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          fileType: file.type || 'application/pdf',
+          action: operation
+        })
+      });
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        
-        const now = Date.now();
-        const timeDiff = (now - lastTime) / 1000;
-        let speed = 0;
-        if (timeDiff > 0.2) {
-          speed = (event.loaded - lastLoaded) / timeDiff;
-          lastLoaded = event.loaded;
-          lastTime = now;
-        }
+      const initData = await initResponse.json();
 
-        onProgress(percentComplete, speed);
+      if (!initResponse.ok || !initData.uploadUrl) {
+        throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية.');
       }
-    };
 
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState === 4) {
-        if (xhr.status === 200 || xhr.status === 201) {
-          try {
-            const data = JSON.parse(xhr.responseText);
+      // 2. رفع الملف مباشرة عبر XMLHttpRequest لتتبع النسبة المئوية بدقة ودون قيود حجم
+      const xhr = new XMLHttpRequest();
+      let lastLoaded = 0;
+      let lastTime = Date.now();
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          
+          const now = Date.now();
+          const timeDiff = (now - lastTime) / 1000;
+          let speed = 0;
+          if (timeDiff > 0.2) {
+            speed = (event.loaded - lastLoaded) / timeDiff;
+            lastLoaded = event.loaded;
+            lastTime = now;
+          }
+
+          onProgress(percentComplete, speed);
+        }
+      };
+
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200 || xhr.status === 201) {
             resolve({
               kind: 'file',
-              filename: data.filename || file.name,
-              message: data.message || 'تم تخزين المستند بنجاح داخل الخزنة السحابية.',
+              filename: initData.safeFileName || file.name,
+              message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
               operation: operation,
               timestamp: new Date().toISOString()
             });
-          } catch (e) {
-            reject(new Error('فشل قراءة استجابة الخادم السحابي.'));
-          }
-        } else {
-          try {
-            const errData = JSON.parse(xhr.responseText);
-            reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
-          } catch (e) {
-            reject(new Error(`خطأ في الخادم (رمز الاستجابة: ${xhr.status}).`));
+          } else {
+            try {
+              const errData = JSON.parse(xhr.responseText);
+              reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
+            } catch (e) {
+              reject(new Error(`خطأ في محرك السحابة (رمز الاستجابة: ${xhr.status}).`));
+            }
           }
         }
-      }
-    };
+      };
 
-    xhr.onerror = function () {
-      reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف.'));
-    };
+      xhr.onerror = function () {
+        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف.'));
+      };
 
-    // إرسال الملف مباشرة للخادم الوسيط متجاوزاً مشاكل الـ CORS وصلاحيات المتصفح
-    xhr.open('POST', '/api/process-pdf', true);
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
-    xhr.send(file);
+      xhr.open('PUT', initData.uploadUrl, true);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+      xhr.send(file);
+
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
   });
 }
 

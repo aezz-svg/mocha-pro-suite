@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +19,7 @@ function getGoogleDriveClient() {
     scopes: ['https://www.googleapis.com/auth/drive'],
   });
 
-  return { folderId, googleDrive: google.drive({ version: 'v3', auth }) };
+  return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
 }
 
 /**
@@ -46,44 +45,58 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { folderId, googleDrive } = getGoogleDriveClient();
-    const contentType = req.headers.get('content-type') || '';
+    const { folderId, authClient, googleDrive } = getGoogleDriveClient();
+    const body = await req.json();
+    const { filename, fileType, action } = body;
 
-    // 1. إذا كان الطلب عبارة عن JSON (مثل الاستعلامات أو التهيئة)
-    if (contentType.includes('application/json')) {
-      const body = await req.json();
-      return NextResponse.json({ success: true, ...body });
+    if (!filename) {
+      return NextResponse.json({ error: 'اسم الملف مفقود.' }, { status: 400 });
     }
 
-    // 2. إذا كان الطلب رفع ملف ثنائي مباشرة عبر الخادم الوسيط
-    const originalName = req.headers.get('x-file-name') ? decodeURIComponent(req.headers.get('x-file-name')!) : 'document.pdf';
-    const safeFileName = `MochaVault_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    
-    const fileBuffer = Buffer.from(await req.arrayBuffer());
+    const tokenResponse = await authClient.getAccessToken();
+    const accessToken = tokenResponse.token;
 
-    const response = await googleDrive.files.create({
-      requestBody: {
-        name: safeFileName,
-        parents: [folderId],
-        description: 'Mocha Pro Suite - Sovereign Vault Upload',
-      },
-      media: {
-        mimeType: 'application/pdf',
-        body: Readable.from(fileBuffer),
-      },
-    });
+    if (!accessToken) {
+      throw new Error('فشل المصادقة مع سحابة جوجل.');
+    }
 
-    // تطبيق سياسة التنظيف الذكي FIFO (إبقاء آخر 3 ملفات فقط)
+    const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+    // طلب رابط رفع مباشر قابل للاستئناف (Resumable Upload) لتجاوز قيود الحجم (خطأ 413) نهائياً
+    const googleResponse = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Upload-Content-Type': fileType || 'application/pdf',
+        },
+        body: JSON.stringify({
+          name: safeFileName,
+          parents: [folderId],
+          description: `Mocha Pro Suite - Resumable Vault Upload: ${action || 'process'}`,
+        }),
+      }
+    );
+
+    const uploadUrl = googleResponse.headers.get('Location');
+    if (!uploadUrl) {
+      const errText = await googleResponse.text();
+      throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
+    }
+
+    // تطبيق سياسة التنظيف الذكي FIFO
     await enforceVaultStorageLimit(googleDrive, folderId);
 
     return NextResponse.json({
       success: true,
-      filename: response.data.name,
-      message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.'
+      uploadUrl,
+      safeFileName,
     });
 
   } catch (error: any) {
-    console.error('Server Proxy Upload Error:', error);
+    console.error('API Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في الخادم السحابي' }, { status: 500 });
   }
 }
