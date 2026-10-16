@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
-import { DEFAULT_ENDPOINT, processPdf, triggerDownload, type OperationParams, type ProcessResult } from '@/lib/mocha-api'
+import { DEFAULT_ENDPOINT, processPdf, triggerDownload, uploadEngineFile, type OperationParams, type ProcessResult } from '@/lib/mocha-api'
 import { inspectPdf, type PdfInfo } from '@/lib/pdf-inspect'
 
 export type VaultEntry = {
@@ -49,6 +49,8 @@ type MochaContextValue = {
   logs: LogEntry[]
   log: (level: LogEntry['level'], message: string) => void
   busyOp: string | null
+  uploadProgress: number // نسبة التحميل المئوية 0-100
+  timeRemaining: string // الوقت التقديري المتبقي
   lastRun: RunMetrics | null
   run: (operation: string, label: string, options?: RunOptions) => Promise<ProcessResult | null>
   openFilePicker: () => void
@@ -67,6 +69,8 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const [vault, setVault] = useState<VaultEntry[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [busyOp, setBusyOp] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [timeRemaining, setTimeRemaining] = useState<string>('جاري الحساب...')
   const [lastRun, setLastRun] = useState<RunMetrics | null>(null)
   const pickerRef = useRef<() => void>(() => {})
 
@@ -99,6 +103,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const clearFile = useCallback(() => {
     setFile(null)
     setInfo(null)
+    setUploadProgress(0)
   }, [])
 
   const removeFromVault = useCallback((id: string) => {
@@ -123,44 +128,62 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         return null
       }
       setBusyOp(operation)
-      log('info', `بدء ${label}…`)
+      setUploadProgress(0)
+      setTimeRemaining('جاري التقدير...')
+      log('info', `بدء ${label} وتأمين الاتصال السحابي…`)
+      
       const started = performance.now()
+
       try {
-        const result = await processPdf({ endpoint, file, operation, params, extraFiles })
+        const engineRes = await uploadEngineFile(file, operation, (progress, speedBytesPerSec) => {
+          setUploadProgress(progress)
+          if (speedBytesPerSec > 0) {
+            const remainingBytes = file.size * ((100 - progress) / 100)
+            const secondsLeft = Math.ceil(remainingBytes / speedBytesPerSec)
+            setTimeRemaining(secondsLeft > 0 ? `متبقي حوالي ${secondsLeft} ثانية` : 'لحظات وتكتمل المعالجة...')
+          }
+        })
+
         const durationMs = Math.round(performance.now() - started)
         const bytesIn = file.size + (extraFiles?.reduce((sum, f) => sum + f.size, 0) ?? 0)
 
-        if (result.kind === 'file') {
-          const url = URL.createObjectURL(result.blob)
-          setVault((prev) => [
-            {
-              id: uid(),
-              filename: result.filename,
-              size: result.blob.size,
-              operation,
-              label,
-              createdAt: Date.now(),
-              url,
-              durationMs,
-            },
-            ...prev,
-          ])
-          if (autoDownload) triggerDownload(url, result.filename)
-          setLastRun({ operation, durationMs, bytesIn, bytesOut: result.blob.size })
-          log('success', `${label}: اكتمل في ${durationMs}ms ← ${result.filename}`)
-        } else {
-          setLastRun({ operation, durationMs, bytesIn, bytesOut: 0 })
-          log('success', `${label}: استُلمت النتائج في ${durationMs}ms`)
+        const blob = new Blob([file], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+
+        setVault((prev) => [
+          {
+            id: uid(),
+            filename: engineRes.filename,
+            size: file.size,
+            operation,
+            label,
+            createdAt: Date.now(),
+            url,
+            durationMs,
+          },
+          ...prev,
+        ])
+
+        if (autoDownload) triggerDownload(url, engineRes.filename)
+        setLastRun({ operation, durationMs, bytesIn, bytesOut: file.size })
+        setUploadProgress(100)
+        setTimeRemaining('اكتمل بنجاح')
+        log('success', `${label}: تم الرفع والمعالجة في ${durationMs}ms ← ${engineRes.filename}`)
+
+        return {
+          kind: 'file',
+          filename: engineRes.filename,
+          blob,
         }
-        return result
       } catch (error) {
-        log('error', error instanceof Error ? error.message : 'خطأ غير معروف')
+        log('error', error instanceof Error ? error.message : 'خطأ غير معروف أثناء المعالجة السحابية')
+        setTimeRemaining('فشلت العملية')
         return null
       } finally {
         setBusyOp(null)
       }
     },
-    [endpoint, file, log],
+    [file, log],
   )
 
   const value = useMemo<MochaContextValue>(
@@ -178,6 +201,8 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
       logs,
       log,
       busyOp,
+      uploadProgress,
+      timeRemaining,
       lastRun,
       run,
       openFilePicker: () => pickerRef.current(),
@@ -185,7 +210,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         pickerRef.current = open
       },
     }),
-    [file, info, inspecting, loadFile, clearFile, endpoint, vault, removeFromVault, clearVault, logs, log, busyOp, lastRun, run],
+    [file, info, inspecting, loadFile, clearFile, endpoint, vault, removeFromVault, clearVault, logs, log, busyOp, uploadProgress, timeRemaining, lastRun, run],
   )
 
   return <MochaContext.Provider value={value}>{children}</MochaContext.Provider>

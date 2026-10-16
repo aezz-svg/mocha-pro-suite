@@ -39,7 +39,7 @@ export async function processPdf(params: any): Promise<any> {
 }
 
 /**
- * دالة محاكاة أو تشغيل التحميل للملفات المعالجة
+ * دالة تشغيل التحميل للملفات المعالجة
  */
 export function triggerDownload(url: string, filename: string): void {
   const a = document.createElement('a');
@@ -51,11 +51,12 @@ export function triggerDownload(url: string, filename: string): void {
 }
 
 /**
- * دالة الرفع التدفقية المباشرة (Direct Resumable Upload Engine)
+ * دالة الرفع التدفقية المباشرة مع تتبع نسبة التقدم (%) والسرعة
  */
 export function uploadEngineFile(
   file: File, 
-  operation: string
+  operation: string,
+  onProgress?: (progress: number, speedBytesPerSec: number) => void
 ): Promise<EngineResponse> {
   return new Promise(async (resolve, reject) => {
     try {
@@ -78,6 +79,26 @@ export function uploadEngineFile(
       }
 
       const xhr = new XMLHttpRequest();
+      let lastLoaded = 0;
+      let lastTime = Date.now();
+
+      // تتبع نسبة التحميل المئوية وسرعة الإرسال لحظياً
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          
+          const now = Date.now();
+          const timeDiff = (now - lastTime) / 1000;
+          let speed = 0;
+          if (timeDiff > 0.2) {
+            speed = (event.loaded - lastLoaded) / timeDiff;
+            lastLoaded = event.loaded;
+            lastTime = now;
+          }
+
+          onProgress(percentComplete, speed);
+        }
+      };
       
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4) {
