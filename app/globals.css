@@ -1,0 +1,185 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-plex-arabic), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-obsidian: #030305;
+  --color-slate-deep: #0b0f19;
+  --color-neon: #6366f1;
+  --color-signal: #10b981;
+  --color-gold: #d97706;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  color-scheme: dark;
+  --radius: 0.75rem;
+  --background: #030305;
+  --foreground: oklch(0.96 0.005 270);
+  --card: #0b0f19;
+  --card-foreground: oklch(0.96 0.005 270);
+  --popover: #0b0f19;
+  --popover-foreground: oklch(0.96 0.005 270);
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: oklch(0.2 0.02 270);
+  --secondary-foreground: oklch(0.96 0.005 270);
+  --muted: oklch(0.18 0.015 270);
+  --muted-foreground: oklch(0.68 0.02 270);
+  --accent: #10b981;
+  --accent-foreground: #000000;
+  --destructive: oklch(0.64 0.22 25);
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.1);
+  --ring: #6366f1;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  ::selection {
+    background: rgb(99 102 241 / 0.45);
+  }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(rgb(99 102 241 / 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(99 102 241 / 0.07) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .text-glow {
+    text-shadow:
+      0 0 24px rgb(99 102 241 / 0.55),
+      0 0 64px rgb(99 102 241 / 0.25);
+  }
+  .shadow-neon {
+    box-shadow:
+      0 0 0 1px rgb(99 102 241 / 0.5),
+      0 0 28px -4px rgb(99 102 241 / 0.6);
+  }
+  .shadow-signal {
+    box-shadow: 0 0 14px rgb(16 185 129 / 0.7);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(400%);
+  }
+}
+.animate-scan {
+  animation: scan 3.2s linear infinite;
+}
+
+@keyframes gold-pulse {
+  0%,
+  100% {
+    border-color: rgb(217 119 6 / 0.35);
+    box-shadow: 0 0 0 0 rgb(217 119 6 / 0);
+  }
+  50% {
+    border-color: rgb(217 119 6 / 0.85);
+    box-shadow: 0 0 36px -6px rgb(217 119 6 / 0.55);
+  }
+}
+.animate-gold-pulse {
+  animation: gold-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(50%);
+  }
+}
+.animate-ticker {
+  animation: ticker 38s linear infinite;
+}
+
+@keyframes steam {
+  0% {
+    transform: translateY(0) scaleX(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-140px) scaleX(1.8);
+    opacity: 0;
+  }
+}
+.animate-steam {
+  animation: steam 6s ease-out infinite;
+}
+
+@layer utilities {
+  .text-glow-gold {
+    text-shadow:
+      0 0 24px rgb(217 119 6 / 0.5),
+      0 0 60px rgb(217 119 6 / 0.2);
+  }
+  .shadow-gold {
+    box-shadow:
+      0 0 0 1px rgb(217 119 6 / 0.45),
+      0 0 28px -6px rgb(217 119 6 / 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scan,
+  .animate-pulse,
+  .animate-spin,
+  .animate-gold-pulse,
+  .animate-ticker,
+  .animate-steam {
+    animation: none;
+  }
+}
+
+input[type='range'] {
+  accent-color: #6366f1;
+}
