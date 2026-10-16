@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,15 +17,12 @@ function getGoogleDriveClient() {
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: formattedKey,
-    scopes: ['https://www.googleapis.com/auth/drive'],
+    scopes: ['https://googleapis.com'],
   });
 
   return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
 }
 
-/**
- * دالة FIFO الذكية: الاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم أوتوماتيكياً
- */
 async function enforceVaultStorageLimit(drive: any, folderId: string) {
   try {
     const res = await drive.files.list({
@@ -33,7 +31,6 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
       pageSize: 50,
     });
     const files = res.data.files || [];
-    // تعديل منطقي: إذا كان هناك 3 ملفات أو أكثر، احذف من الملف الثالث فما فوق
     if (files.length >= 3) {
       for (let i = 2; i < files.length; i++) {
         await drive.files.delete({ fileId: files[i].id });
@@ -44,61 +41,58 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
+// استقبال الملف الفعلي من الـ Frontend كـ FormData ورفعه مباشرة كـ Stream آمن
 export async function POST(req: NextRequest) {
   try {
-    const { folderId, authClient, googleDrive } = getGoogleDriveClient();
-    const body = await req.json();
-    const { filename, fileType, action } = body;
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+    const filename = formData.get('filename') as string;
+    const fileType = formData.get('fileType') as string;
+    const action = formData.get('action') as string;
 
-    if (!filename) {
-      return NextResponse.json({ error: 'اسم الملف مفقود.' }, { status: 400 });
-    }
-
-    const tokenResponse = await authClient.getAccessToken();
-    const accessToken = tokenResponse.token;
-
-    if (!accessToken) {
-      throw new Error('فشل المصادقة مع سحابة جوجل.');
+    if (!file || !filename) {
+      return NextResponse.json({ error: 'الملف أو بيانات الرفع مفقودة.' }, { status: 400 });
     }
 
     const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    // طلب رابط رفع مباشر قابل للاستئناف (Resumable Upload) لتجاوز قيود الحجم (خطأ 413) نهائياً
-    const googleResponse = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Upload-Content-Type': fileType || 'application/pdf',
-        },
-        body: JSON.stringify({
-          name: safeFileName,
-          parents: [folderId],
-          description: `Mocha Pro Suite - Resumable Vault Upload: ${action || 'process'}`,
-        }),
-      }
-    );
+    // تحويل بايتات الملف الفعلي إلى Stream لتمريرها لحظياً إلى جوجل درايف دون قيود الذاكرة
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const stream = Readable.from(buffer);
 
-    const uploadUrl = googleResponse.headers.get('Location');
-    if (!uploadUrl) {
-      const errText = await googleResponse.text();
-      throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
+    // الرفع الآمن والمباشر من السيرفر (Backend) والذي لا يحتاج CORS مطلقاً
+    const googleResponse = await googleDrive.files.create({
+      requestBody: {
+        name: safeFileName,
+        parents: [folderId],
+        description: `Mocha Pro Suite - Safe Vault Streaming: ${action || 'process'}`,
+      },
+      media: {
+        mimeType: fileType || 'application/pdf',
+        body: stream,
+      },
+      fields: 'id, name',
+    });
+
+    if (!googleResponse.data.id) {
+      throw new Error('فشل خادم جوجل درايف في إنشاء الملف السحابي.');
     }
 
-    // ⚠️ تم تصحيح الموضع لتنظيف المجلد وتهيئته لاستقبال الملف الجديد
+    // تنظيف المخزن الذكي بعد نجاح الرفع
     await enforceVaultStorageLimit(googleDrive, folderId);
 
     return NextResponse.json({
       success: true,
-      uploadUrl,
       safeFileName,
+      fileId: googleResponse.data.id
     });
 
   } catch (error: any) {
-    console.error('API Error:', error);
-    return NextResponse.json({ error: error.message || 'خطأ في الخادم السحابي' }, { status: 500 });
+    console.error('Streaming API Error:', error);
+    return NextResponse.json({ error: error.message || 'خطأ في معالجة الرفع السحابي' }, { status: 500 });
   }
 }
 

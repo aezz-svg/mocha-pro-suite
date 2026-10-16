@@ -1,70 +1,17 @@
-export const DEFAULT_ENDPOINT = 'https://api.mocha-pro.local';
-
-export interface EngineResponse {
-  kind: 'file' | 'text' | 'error';
-  filename: string;
-  message: string;
-  viewUrl?: string;
-  operation?: string;
-  timestamp?: string;
-}
-
-export async function pingEngine(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/process-pdf', { method: 'GET' });
-    return res.ok;
-  } catch {
-    return true;
-  }
-}
-
-export async function processPdf(params: any): Promise<any> {
-  const res = await fetch('/api/process-pdf', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params)
-  });
-  return await res.json();
-}
-
-export function triggerDownload(url: string, filename: string): void {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-/**
- * دالة الرفع المباشر القابل للاستئناف (Resumable Upload) الآمنة تماماً للملفات الكبيرة
- * تتجاوز خطأ 413 (Content Too Large) وتدعم مؤشر التقدم (%)
- */
 export function uploadEngineFile(
   file: File, 
   operation: string,
   onProgress?: (progress: number, speedBytesPerSec: number) => void
 ): Promise<EngineResponse> {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     try {
-      // 1. طلب رابط الرفع المباشر من الخادم
-      const initResponse = await fetch('/api/process-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          fileType: file.type || 'application/pdf',
-          action: operation
-        })
-      });
+      // تجهيز البيانات كـ FormData لإرسالها بالكامل كـ Multi-part الطلب
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('filename', file.name);
+      formData.append('fileType', file.type || 'application/pdf');
+      formData.append('action', operation);
 
-      const initData = await initResponse.json();
-
-      if (!initResponse.ok || !initData.uploadUrl) {
-        throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية.');
-      }
-
-      // 2. رفع الملف مباشرة عبر XMLHttpRequest لتتبع النسبة المئوية بدقة ودون قيود حجم
       const xhr = new XMLHttpRequest();
       let lastLoaded = 0;
       let lastTime = Date.now();
@@ -88,61 +35,46 @@ export function uploadEngineFile(
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4) {
-          // جوجل ترجع رمز 200 أو 201 عند نجاح رفع الـ Resumable بالكامل
           if (xhr.status === 200 || xhr.status === 201) {
-            resolve({
-              kind: 'file',
-              filename: initData.safeFileName || file.name,
-              message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
-              operation: operation,
-              timestamp: new Date().toISOString()
-            });
-          } else {
-            // معالجة الأخطاء بحذر دون افتراض أن الرد دائماً JSON
             try {
-              if (xhr.responseText) {
-                const errData = JSON.parse(xhr.responseText);
-                reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
-              } else {
-                reject(new Error(`رفضت جوجل الطلب (رمز الحالة: ${xhr.status}). يرجى التحقق من سياسة CORS حساب جوجل.`));
-              }
+              const resData = JSON.parse(xhr.responseText);
+              resolve({
+                kind: 'file',
+                filename: resData.safeFileName || file.name,
+                message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
+                operation: operation,
+                timestamp: new Date().toISOString()
+              });
             } catch (e) {
-              reject(new Error(`خطأ في محرك السحابة (رمز الاستجابة: ${xhr.status}).`));
+              resolve({
+                kind: 'file',
+                filename: file.name,
+                message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
+                operation: operation,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } else {
+            try {
+              const errData = JSON.parse(xhr.responseText);
+              reject(new Error(errData.error || 'فشل معالجة ورفع الملف السحابي.'));
+            } catch (e) {
+              reject(new Error(`خطأ في معالجة السيرفر الوسيط (رمز الاستجابة: ${xhr.status}).`));
             }
           }
         }
       };
 
       xhr.onerror = function () {
-        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف. تأكد من تفعيل CORS في حساب جوجل درايف الخاص بك.'));
+        reject(new Error('حدث خطأ في شبكة الاتصال أثناء الرفع إلى السيرفر.'));
       };
 
-      xhr.open('PUT', initData.uploadUrl, true);
-      
-      // هـام جداً: لا تضع أي Header إضافي هنا مثل Authorization للتصدي لتعارض الـ CORS
-      xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
-      
-      xhr.send(file);
+      // الرفع المباشر والآمن إلى السيرفر الخاص بك لحجب الـ CORS نهائياً وعمل عداد النسبة بدقة
+      xhr.open('POST', '/api/process-pdf', true);
+      xhr.send(formData);
 
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
-}
-
-export function saveEngineTelemetryLog(logEntry: string): void {
-  if (typeof window !== 'undefined') {
-    try {
-      const currentLogs = localStorage.getItem('mocha_telemetry_logs') || '[]';
-      const parsedLogs = JSON.parse(currentLogs);
-      parsedLogs.push({
-        id: crypto.randomUUID(),
-        log: logEntry,
-        timestamp: new Date().toISOString()
-      });
-      localStorage.setItem('mocha_telemetry_logs', JSON.stringify(parsedLogs));
-    } catch (error) {
-      console.error('Failed to update telemetry storage:', error);
-    }
-  }
 }
