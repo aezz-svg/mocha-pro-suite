@@ -1,8 +1,3 @@
-/**
- * Mocha Pro Suite - API Integration Client
- * ملف خدمات الاتصال بالمحرك السحابي وإدارة وثائق الـ PDF
- */
-
 export const DEFAULT_ENDPOINT = 'https://api.mocha-pro.local';
 
 export interface EngineResponse {
@@ -14,21 +9,15 @@ export interface EngineResponse {
   timestamp?: string;
 }
 
-/**
- * دالة التحقق من حالة المحرك
- */
 export async function pingEngine(): Promise<boolean> {
   try {
     const res = await fetch('/api/process-pdf', { method: 'GET' });
     return res.ok;
   } catch {
-    return true; // افتراضي للتشغيل المحلي
+    return true;
   }
 }
 
-/**
- * دالة معالجة النصوص أو ملفات الـ PDF
- */
 export async function processPdf(params: any): Promise<any> {
   const res = await fetch('/api/process-pdf', {
     method: 'POST',
@@ -38,9 +27,6 @@ export async function processPdf(params: any): Promise<any> {
   return await res.json();
 }
 
-/**
- * دالة تشغيل التحميل للملفات المعالجة
- */
 export function triggerDownload(url: string, filename: string): void {
   const a = document.createElement('a');
   a.href = url;
@@ -51,7 +37,7 @@ export function triggerDownload(url: string, filename: string): void {
 }
 
 /**
- * دالة الرفع التدفقية المباشرة مع تتبع نسبة التقدم (%) والسرعة
+ * دالة الرفع المباشر القابل للاستئناف مع تتبع النسبة المئوية (%) والسرعة
  */
 export function uploadEngineFile(
   file: File, 
@@ -60,11 +46,10 @@ export function uploadEngineFile(
 ): Promise<EngineResponse> {
   return new Promise(async (resolve, reject) => {
     try {
+      // 1. طلب رابط الرفع من الخادم
       const initResponse = await fetch('/api/process-pdf', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json' 
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: file.name,
           fileType: file.type || 'application/pdf',
@@ -75,14 +60,14 @@ export function uploadEngineFile(
       const initData = await initResponse.json();
 
       if (!initResponse.ok || !initData.uploadUrl) {
-        throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية لتوليد رابط الرفع المباشر.');
+        throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية.');
       }
 
+      // 2. رفع الملف مباشرة باستخدام XMLHttpRequest لتتبع النسبة المئوية بدقة
       const xhr = new XMLHttpRequest();
       let lastLoaded = 0;
       let lastTime = Date.now();
 
-      // تتبع نسبة التحميل المئوية وسرعة الإرسال لحظياً
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && onProgress) {
           const percentComplete = Math.round((event.loaded / event.total) * 100);
@@ -99,30 +84,30 @@ export function uploadEngineFile(
           onProgress(percentComplete, speed);
         }
       };
-      
+
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4) {
           if (xhr.status === 200 || xhr.status === 201) {
             resolve({
               kind: 'file',
-              filename: initData.safeFileName || initData.fileName || file.name,
-              message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية السيادية Mocha Vault.',
+              filename: initData.safeFileName || file.name,
+              message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
               operation: operation,
               timestamp: new Date().toISOString()
             });
           } else {
             try {
               const errData = JSON.parse(xhr.responseText);
-              reject(new Error(errData.error || 'فشل الرفع المباشر للمحرك السحابي، يرجى مراجعة الصلاحيات.'));
+              reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
             } catch (e) {
-              reject(new Error(`خطأ غير متوقع في استجابة الخادم السحابي (رمز الاستجابة: ${xhr.status}).`));
+              reject(new Error(`خطأ غير متوقع في محرك السحابة (رمز الاستجابة: ${xhr.status}).`));
             }
           }
         }
       };
 
       xhr.onerror = function () {
-        reject(new Error('حدث خطأ في شبكة الاتصال أثناء الرفع المباشر، يرجى التحقق من جودة الاتصال.'));
+        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف.'));
       };
 
       xhr.open('PUT', initData.uploadUrl, true);
