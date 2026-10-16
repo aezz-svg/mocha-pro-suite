@@ -88,6 +88,7 @@ export function uploadEngineFile(
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4) {
+          // جوجل ترجع رمز 200 أو 201 عند نجاح رفع الـ Resumable بالكامل
           if (xhr.status === 200 || xhr.status === 201) {
             resolve({
               kind: 'file',
@@ -97,9 +98,14 @@ export function uploadEngineFile(
               timestamp: new Date().toISOString()
             });
           } else {
+            // معالجة الأخطاء بحذر دون افتراض أن الرد دائماً JSON
             try {
-              const errData = JSON.parse(xhr.responseText);
-              reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
+              if (xhr.responseText) {
+                const errData = JSON.parse(xhr.responseText);
+                reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
+              } else {
+                reject(new Error(`رفضت جوجل الطلب (رمز الحالة: ${xhr.status}). يرجى التحقق من سياسة CORS حساب جوجل.`));
+              }
             } catch (e) {
               reject(new Error(`خطأ في محرك السحابة (رمز الاستجابة: ${xhr.status}).`));
             }
@@ -108,11 +114,14 @@ export function uploadEngineFile(
       };
 
       xhr.onerror = function () {
-        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف.'));
+        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف. تأكد من تفعيل CORS في حساب جوجل درايف الخاص بك.'));
       };
 
       xhr.open('PUT', initData.uploadUrl, true);
+      
+      // هـام جداً: لا تضع أي Header إضافي هنا مثل Authorization للتصدي لتعارض الـ CORS
       xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+      
       xhr.send(file);
 
     } catch (err) {

@@ -33,6 +33,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
       pageSize: 50,
     });
     const files = res.data.files || [];
+    // تعديل منطقي: إذا كان هناك 3 ملفات أو أكثر، احذف من الملف الثالث فما فوق
     if (files.length >= 3) {
       for (let i = 2; i < files.length; i++) {
         await drive.files.delete({ fileId: files[i].id });
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
     }
 
-    // تطبيق سياسة التنظيف الذكي FIFO
+    // ⚠️ تم تصحيح الموضع لتنظيف المجلد وتهيئته لاستقبال الملف الجديد
     await enforceVaultStorageLimit(googleDrive, folderId);
 
     return NextResponse.json({
