@@ -24,7 +24,7 @@ function getGoogleDriveClient() {
 }
 
 /**
- * دالة ذكية لإدارة سعة التخزين: الاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم أوتوماتيكياً
+ * دالة ذكية لإدارة سعة التخزين: الاحتفاظ بآخر 3 ملفات فقط وحذف الأقدم أوتوماتيكياً (FIFO)
  */
 async function enforceVaultStorageLimit(drive: any, folderId: string) {
   try {
@@ -35,7 +35,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
     });
 
     const files = res.data.files || [];
-    // إذا وصل عدد الملفات 3 أو أكثر، نحذف الملفات التي تزيد عن آخر ملفين لتفسح المجال للثالث
+    // إذا وصل عدد الملفات 3 أو أكثر، نحذف الملفات الزائدة عن آخر ملفين لتفسح المجال للثالث
     if (files.length >= 3) {
       for (let i = 2; i < files.length; i++) {
         await drive.files.delete({ fileId: files[i].id });
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get('content-type') || '';
     const { folderId, authClient, googleDrive } = getGoogleDriveClient();
 
-    // 1. مرحلة تهيئة الرابط المباشر للرفع وتطبيق سياسة التنظيف
+    // مرحلة تهيئة الرابط المباشر للرفع القابل للاستئناف (Resumable Upload)
     if (contentType.includes('application/json')) {
       const { filename, fileType, action } = await req.json();
       
@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
         throw new Error('فشل المصادقة مع سحابة جوجل: رمز الوصول مفقود.');
       }
 
-      // تنظيف وإعداد اسم الملف
-      const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      // تنظيف وإعداد اسم الملف السيادي
+      const safeFileName = `MochaVault_${Date.now()}_${(filename || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-      // طلب رابط رفع تدفقي مباشر (Resumable Upload)
+      // طلب رابط رفع تدفقي مباشر من جوجل درايف
       const googleResponse = await fetch(
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
         {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             name: safeFileName,
             parents: [folderId],
-            description: `Mocha Pro Suite - Direct Uplink: ${action || 'upload_vault'}`,
+            description: `Mocha Pro Suite - Resumable Uplink: ${action || 'upload_vault'}`,
           }),
         }
       );
