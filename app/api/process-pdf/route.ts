@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ function getGoogleDriveClient() {
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!clientEmail || !privateKey || !folderId) {
-    throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم.');
+    throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم (.env.local).');
   }
 
   const formattedKey = privateKey.replace(/\\n/g, '\n');
@@ -19,7 +20,7 @@ function getGoogleDriveClient() {
     scopes: ['https://www.googleapis.com/auth/drive.file'],
   });
 
-  return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
+  return { folderId, googleDrive: google.drive({ version: 'v3', auth }) };
 }
 
 /**
@@ -45,58 +46,45 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { folderId, authClient, googleDrive } = getGoogleDriveClient();
-    const body = await req.json();
-    const { filename, fileType, action } = body;
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const contentType = req.headers.get('content-type') || '';
 
-    if (!filename) {
-      return NextResponse.json({ error: 'اسم الملف مفقود.' }, { status: 400 });
-    }
+    // معالجة الرفع عبر الخادم الوسيط (يتجاوز CORS تماماً ويحل مشكلة 403)
+    if (!contentType.includes('application/json')) {
+      const originalName = req.headers.get('x-file-name') ? decodeURIComponent(req.headers.get('x-file-name')!) : 'document.pdf';
+      const safeFileName = `MochaVault_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      
+      const fileBuffer = Buffer.from(await req.arrayBuffer());
 
-    const tokenResponse = await authClient.getAccessToken();
-    const accessToken = tokenResponse.token;
-
-    if (!accessToken) {
-      throw new Error('فشل المصادقة مع سحابة جوجل.');
-    }
-
-    const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-    // طلب رابط رفع تدفقي مباشر (Resumable Upload) لدعم الملفات الكبيرة جداً بدون تلف
-    const googleResponse = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Upload-Content-Type': fileType || 'application/pdf',
-        },
-        body: JSON.stringify({
+      // رفع الملف مباشرة عبر مكتبة جوجل الرسمية وصلاحيات الخادم المضمونة
+      const response = await googleDrive.files.create({
+        requestBody: {
           name: safeFileName,
           parents: [folderId],
-          description: `Mocha Pro Suite - Secure Vault Upload: ${action || 'process'}`,
-        }),
-      }
-    );
+          description: 'Mocha Pro Suite - Server Proxy Secure Upload',
+        },
+        media: {
+          mimeType: 'application/pdf',
+          body: Readable.from(fileBuffer),
+        },
+      });
 
-    const uploadUrl = googleResponse.headers.get('Location');
-    if (!uploadUrl) {
-      const errText = await googleResponse.text();
-      throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
+      // تطبيق سياسة الاحتفاظ بآخر 3 ملفات فقط (FIFO)
+      await enforceVaultStorageLimit(googleDrive, folderId);
+
+      return NextResponse.json({
+        success: true,
+        filename: response.data.name,
+        message: 'تم رفع ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.'
+      });
     }
 
-    // تطبيق سياسة FIFO لتنظيف الملفات القديمة
-    await enforceVaultStorageLimit(googleDrive, folderId);
-
-    return NextResponse.json({
-      success: true,
-      uploadUrl,
-      safeFileName,
-    });
+    // الطلبات الأخرى (JSON)
+    const body = await req.json();
+    return NextResponse.json({ success: true, ...body });
 
   } catch (error: any) {
-    console.error('API Error:', error);
+    console.error('Server Proxy Upload Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في الخادم السحابي' }, { status: 500 });
   }
 }
