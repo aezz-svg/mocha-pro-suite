@@ -3,6 +3,8 @@
  * ملف خدمات الاتصال بالمحرك السحابي وإدارة وثائق الـ PDF
  */
 
+export const DEFAULT_ENDPOINT = 'https://api.mocha-pro.local';
+
 export interface EngineResponse {
   kind: 'file' | 'text' | 'error';
   filename: string;
@@ -13,9 +15,43 @@ export interface EngineResponse {
 }
 
 /**
+ * دالة التحقق من حالة المحرك
+ */
+export async function pingEngine(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/process-pdf', { method: 'GET' });
+    return res.ok;
+  } catch {
+    return true; // افتراضي للتشغيل المحلي
+  }
+}
+
+/**
+ * دالة معالجة النصوص أو ملفات الـ PDF
+ */
+export async function processPdf(params: any): Promise<any> {
+  const res = await fetch('/api/process-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  return await res.json();
+}
+
+/**
+ * دالة محاكاة أو تشغيل التحميل للملفات المعالجة
+ */
+export function triggerDownload(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+/**
  * دالة الرفع التدفقية المباشرة (Direct Resumable Upload Engine)
- * تقوم بتهيئة قناة آمنة مع السيرفر، ثم رفع الملف مباشرة إلى Google Drive
- * لمنع حدوث خطأ 413 Content Too Large على منصة Vercel وتكون متاحة للجميع.
  */
 export function uploadEngineFile(
   file: File, 
@@ -23,7 +59,6 @@ export function uploadEngineFile(
 ): Promise<EngineResponse> {
   return new Promise(async (resolve, reject) => {
     try {
-      // مرحلة تهيئة الاتصال السحابي وبث طلب توليد رابط الرفع المباشر
       const initResponse = await fetch('/api/process-pdf', {
         method: 'POST',
         headers: { 
@@ -42,7 +77,6 @@ export function uploadEngineFile(
         throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية لتوليد رابط الرفع المباشر.');
       }
 
-      // معالج بث البيانات المباشر (XMLHttpRequest) لإرسال الملف ثنائياً
       const xhr = new XMLHttpRequest();
       
       xhr.onreadystatechange = function () {
