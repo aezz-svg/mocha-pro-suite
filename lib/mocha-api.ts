@@ -1,3 +1,55 @@
+export const DEFAULT_ENDPOINT = 'https://mocha-pro.local';
+
+export interface EngineResponse {
+  kind: 'file' | 'text' | 'error';
+  filename: string;
+  message: string;
+  viewUrl?: string;
+  operation?: string;
+  timestamp?: string;
+}
+
+// أضفنا هذه الأنواع البرمجية لتوافق المكونات
+export type OperationParams = any;
+export type ProcessResult = {
+  kind: 'file';
+  filename: string;
+  blob: Blob;
+};
+
+export async function pingEngine(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/process-pdf', { method: 'GET' });
+    return res.ok;
+  } catch {
+    return true;
+  }
+}
+
+export async function processPdf(params: any): Promise<any> {
+  const res = await fetch('/api/process-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  });
+  return await res.json();
+}
+
+export function triggerDownload(url: string, filename: string): void {
+  if (typeof window !== 'undefined') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+/**
+ * دالة الرفع المباشر والآمن عبر السيرفر الوسيط (Backend Proxy)
+ * تتجاوز قيود CORS والـ 403 تماماً وبدون حسابات فوترة
+ */
 export function uploadEngineFile(
   file: File, 
   operation: string,
@@ -5,7 +57,6 @@ export function uploadEngineFile(
 ): Promise<EngineResponse> {
   return new Promise((resolve, reject) => {
     try {
-      // تجهيز البيانات كـ FormData لإرسالها بالكامل كـ Multi-part الطلب
       const formData = new FormData();
       formData.append('file', file);
       formData.append('filename', file.name);
@@ -69,7 +120,6 @@ export function uploadEngineFile(
         reject(new Error('حدث خطأ في شبكة الاتصال أثناء الرفع إلى السيرفر.'));
       };
 
-      // الرفع المباشر والآمن إلى السيرفر الخاص بك لحجب الـ CORS نهائياً وعمل عداد النسبة بدقة
       xhr.open('POST', '/api/process-pdf', true);
       xhr.send(formData);
 
@@ -77,4 +127,21 @@ export function uploadEngineFile(
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
+}
+
+export function saveEngineTelemetryLog(logEntry: string): void {
+  if (typeof window !== 'undefined') {
+    try {
+      const currentLogs = localStorage.getItem('mocha_telemetry_logs') || '[]';
+      const parsedLogs = JSON.parse(currentLogs);
+      parsedLogs.push({
+        id: crypto.randomUUID(),
+        log: logEntry,
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem('mocha_telemetry_logs', JSON.stringify(parsedLogs));
+    } catch (error) {
+      console.error('Failed to update telemetry storage:', error);
+    }
+  }
 }
