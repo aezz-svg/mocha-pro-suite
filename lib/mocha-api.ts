@@ -46,7 +46,7 @@ export function triggerDownload(url: string, filename: string): void {
 }
 
 /**
- * دالة تقطيع الملفات الذكية لرفع أحجام ضخمة بسلاسة تامة وتخطي قيود حجم Vercel 4.5MB
+ * دالة تقطيع الملفات الذكية ورفعها على أجزاء، ثم جلب رابط الملف المعالج من جوجل درايف للتحميل الفوري
  */
 export function uploadEngineFile(
   file: File, 
@@ -68,9 +68,11 @@ export function uploadEngineFile(
       }
 
       const fileId = initData.fileId;
-      const chunkSize = 3 * 1024 * 1024; // تقطيع الملف الفعلي برمجياً إلى أجزاء بحجم 3 ميجابايت
+      const chunkSize = 3 * 1024 * 1024; // 3 ميجابايت لكل جزء
       const totalChunks = Math.ceil(file.size / chunkSize);
       
+      let finalResponseData: any = null;
+
       // 2. رفع الأجزاء المقطوعة بالتوالي
       for (let i = 0; i < totalChunks; i++) {
         const start = i * chunkSize;
@@ -84,8 +86,15 @@ export function uploadEngineFile(
         chunkFormData.append('isFirst', 'false');
 
         const chunkRes = await fetch('/api/process-pdf', { method: 'POST', body: chunkFormData });
+        const chunkData = await chunkRes.json();
+
         if (!chunkRes.ok) {
-          throw new Error('فشل رفع أحد أجزاء المستند السحابية.');
+          throw new Error(chunkData.error || 'فشل رفع أحد أجزاء المستند السحابية.');
+        }
+
+        // الاحتفاظ بالاستجابة الأخيرة التي تحتوي على رابط التحميل المباشر بعد انتهاء آخر جزء
+        if (i === totalChunks - 1) {
+          finalResponseData = chunkData;
         }
 
         if (onProgress) {
@@ -94,10 +103,16 @@ export function uploadEngineFile(
         }
       }
 
+      // إذا توفر رابط تحميل مباشر من جوجل درايف، نقوم بفتحه أو تجهيزه للتحميل الفوري
+      if (finalResponseData && finalResponseData.downloadUrl) {
+        triggerDownload(finalResponseData.downloadUrl, finalResponseData.filename || file.name);
+      }
+
       resolve({
         kind: 'file',
-        filename: file.name,
-        message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
+        filename: finalResponseData?.filename || file.name,
+        message: 'تم تخزين ومعالجة المستند بنجاح وجاهز للتحميل من Mocha Vault.',
+        viewUrl: finalResponseData?.downloadUrl,
         operation: operation,
         timestamp: new Date().toISOString()
       });

@@ -14,7 +14,6 @@ function getGoogleDriveClient() {
     throw new Error('بيانات الربط السحابي (OAuth Environment Variables) غير مكتملة.');
   }
 
-  // الاتصال المباشر بحسابك الشخصي عبر OAuth 2.0
   const oAuth2Client = new google.auth.OAuth2(
     clientId,
     clientSecret,
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
     const fileId = formData.get('fileId') as string;
     const isFirst = formData.get('isFirst') === 'true';
 
-    // الخطوة الأولى: إنشاء ملف فارغ في جوجل درايف وحجز المعرف الخاص به
+    // الخطوة الأولى: إنشاء ملف فارغ وحجز الـ ID
     if (isFirst) {
       await enforceVaultStorageLimit(googleDrive, folderId);
       const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -71,14 +70,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
     }
 
-    // الخطوة الثانية: استقبال الجزء الحالي وحقنه داخل ملف درايف المحدد
-    const buffer = Buffer.from(await chunk.arrayBuffer());
+    // الخطوة الثانية: قراءة المحتوى الحالي ودمج الجزء الجديد مع الحفاظ على الحجم الكامل
+    const existingFile = await googleDrive.files.get({
+      fileId: fileId,
+      alt: 'media',
+    }, { responseType: 'arraybuffer' });
+
+    const existingBuffer = Buffer.from(existingFile.data as ArrayBuffer);
+    const newChunkBuffer = Buffer.from(await chunk.arrayBuffer());
+    
+    // دمج البيانات القديمة مع الجزء الجديد (Appending)
+    const combinedBuffer = Buffer.concat([existingBuffer, newChunkBuffer]);
+
     await googleDrive.files.update({
       fileId: fileId,
-      media: { mimeType: 'application/pdf', body: Readable.from(buffer) },
+      media: {
+        mimeType: 'application/pdf',
+        body: Readable.from(combinedBuffer),
+      },
     });
 
-    return NextResponse.json({ success: true, fileId });
+    // جلب معلومات الملف ورابط التحميل المباشر بعد اكتمال التحديث
+    const fileMeta = await googleDrive.files.get({
+      fileId: fileId,
+      fields: 'id, name, webContentLink, webViewLink',
+    });
+
+    return NextResponse.json({ 
+      success: true, 
+      fileId, 
+      downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
+      filename: fileMeta.data.name
+    });
+
   } catch (error: any) {
     console.error('Chunk API Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في معالجة الجزء السحابي' }, { status: 500 });
