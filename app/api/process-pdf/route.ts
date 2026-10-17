@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-// استيراد كافة الأدوات والخطوط والمكونات البرمجية للمعالجة الحقيقية بالبايت
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,21 +9,21 @@ export const dynamic = 'force-dynamic';
 // 1. التعريفات الهيكلية (Interfaces & Types)
 // -------------------------------------------------------------------
 interface ProcessingSettings {
-  dpi?: number;                          // دقة الصور النقطية (مثلاً: 108 أو 300)
-  compressionLevel?: 'extreme' | 'balanced' | 'low' | string; // مستوى الضغط (أقصى، متوازن، خفيف)
-  colorMode?: 'rgb' | 'grayscale' | 'mono' | string;         // نمط الألوان (ألوان كاملة، رمادي)
-  removeJs?: boolean;                    // إزالة خيوط الـ JavaScript والأكواد المضمنة
-  cleanMetadata?: boolean;               // تصفير وتنظيف البيانات الوصفية القديمة
-  linearize?: boolean;                   // تحسين البنية البرمجية للعرض السريع على الويب
-  targetPages?: number[];                 // مصفوفة أرقام الصفحات للإبقاء عليها وحذف الباقي (تبدأ من 0)
-  secondaryFileId?: string;               // معرف الملف السحابي الثاني المراد دمجه مع الحالي
-  reviewText?: string;                    // نص المراجعة أو التعليق المراد حقنه
-  reviewerName?: string;                  // اسم المشرف أو المراجع للتوثيق
-  ownerPassword?: string;                 // كلمة مرور المالك للتحكم بالصلاحيات المشددة
-  userPassword?: string;                  // كلمة مرور المستخدم المطلوبة لفتح المستند
-  allowPrinting?: boolean;                // صلاحية طباعة المستند
-  allowCopying?: boolean;                 // صلاحية تحديد ونسخ النصوص
-  pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string; // معيار الأرشفة الدولية المختارة
+  dpi?: number;
+  compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
+  colorMode?: 'rgb' | 'grayscale' | 'mono' | string;
+  removeJs?: boolean;
+  cleanMetadata?: boolean;
+  linearize?: boolean;
+  targetPages?: number[];
+  secondaryFileId?: string;
+  reviewText?: string;
+  reviewerName?: string;
+  ownerPassword?: string;
+  userPassword?: string;
+  allowPrinting?: boolean;
+  allowCopying?: boolean;
+  pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string;
 }
 
 // -------------------------------------------------------------------
@@ -40,12 +39,7 @@ function getGoogleDriveClient() {
     throw new Error('بيانات الربط السحابي (OAuth Environment Variables) غير مكتملة في ملف الـ .env.');
   }
 
-  const oAuth2Client = new google.auth.OAuth2(
-    clientId,
-    clientSecret,
-    'http://localhost'
-  );
-
+  const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost');
   oAuth2Client.setCredentials({ refresh_token: refreshToken });
   return { folderId, googleDrive: google.drive({ version: 'v3', auth: oAuth2Client }) };
 }
@@ -71,8 +65,6 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 // -------------------------------------------------------------------
 // 3. الدوال التنفيذية الفعّالة والعميقة للمعالجة بالبايت (المحركات الستة)
 // -------------------------------------------------------------------
-
-// 🛠️ المحرك الأول: محرك التحسين والضغط الهيكلي الصارم (S-06 / S-01)
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha High-Compression Production Engine v2.5');
@@ -88,16 +80,13 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
     if (root.has(PDFDocument.Context.obj('AA'))) root.delete(PDFDocument.Context.obj('AA'));
     if (root.has(PDFDocument.Context.obj('OpenAction'))) root.delete(PDFDocument.Context.obj('OpenAction'));
   }
-  console.log(`[Mocha Engine]: تم تطبيق الضغط الفعلي للبيانات والهياكل الثنائية.`);
 }
 
-// 🛠️ المحرك الثاني: محرك تنظيم وتفكيك وحذف الصفحات الصارم (S-02)
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
   const totalPages = srcDoc.getPageCount();
   const pagesToKeep = settings.targetPages || [];
 
   if (pagesToKeep.length === 0) {
-    console.log('[Mocha Engine]: لم يتم تحديد صفحات لتنظيمها، تم تمرير المستند الأصلي بالكامل.');
     return srcDoc;
   }
 
@@ -109,18 +98,14 @@ async function executePageOrganization(srcDoc: PDFDocument, settings: Processing
   const newPdfDoc = await PDFDocument.create();
   const copiedPages = await newPdfDoc.copyPages(srcDoc, validPages);
   copiedPages.forEach((page) => newPdfDoc.addPage(page));
-  
-  console.log(`[Mocha Engine]: تم تفكيك وحذف الصفحات غير المرغوبة بنجاح. المتبقي: ${validPages.length}`);
   return newPdfDoc;
 }
 
-// 🛠️ المحرك الثالث: محرك الدمج الفعّال للمستندات والملفات المتعددة (S-03)
 async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: ProcessingSettings): Promise<PDFDocument> {
   if (!settings.secondaryFileId) {
     throw new Error('معرف الملف الثاني (Secondary File ID) مفقود لإتمام عملية اللصق والدمج.');
   }
 
-  console.log(`[Mocha Engine]: جاري جلب وقراءة بايتات الملف الثاني سحابياً: ${settings.secondaryFileId}`);
   const fileBResponse = await googleDrive.files.get(
     { fileId: settings.secondaryFileId, alt: 'media' },
     { responseType: 'arraybuffer' }
@@ -130,19 +115,15 @@ async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: 
 
   const mergedPdfDoc = await PDFDocument.create();
 
-  // دمج صفحات الملف الحالي
   const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices());
   pagesA.forEach((page) => mergedPdfDoc.addPage(page));
 
-  // دمج صفحات الملف الثاني المجلوب
   const pagesB = await mergedPdfDoc.copyPages(pdfDocB, pdfDocB.getPageIndices());
   pagesB.forEach((page) => mergedPdfDoc.addPage(page));
 
-  console.log(`[Mocha Engine]: تمت عملية الدمج الفعلي بنجاح. إجمالي الصفحات الحالية: ${mergedPdfDoc.getPageCount()}`);
   return mergedPdfDoc;
 }
 
-// 🛠️ المحرك الرابع: محرك المراجعة وحقن العلامات والتعليقات التوضيحية (S-04)
 async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const pages = pdfDoc.getPages();
   if (pages.length === 0) return;
@@ -152,7 +133,6 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
   const comment = settings.reviewText || 'تمت المراجعة والتدقيق الفني عبر نظام Mocha';
   const author = settings.reviewerName || 'Mocha Reviewer';
 
-  // إنشاء كائن التعليق التفاعلي (Sticky Note Object)
   const reviewAnnotation = pdfDoc.context.obj({
     Type: 'Annot',
     Subtype: 'Text',
@@ -172,17 +152,12 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
       pdfDoc.context.array([pdfDoc.context.register(reviewAnnotation)])
     );
   }
-  console.log(`[Mocha Engine]: تم حقن كائن المراجعة التفاعلي داخل الصفحة الأولى للمستند.`);
 }
 
-// 🛠️ المحرك الخامس: محرك الأمان الصارم وتشفير المستندات وحظر الصلاحيات (S-05)
 async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   pdfDoc.setProducer('Mocha Security Professional Engine v3.0');
-  // تسطيح بنية الحقول ومنع التعديل الفردي الخارجي على محتويات الـ PDF
-  console.log(`[Mocha Engine]: تم تطبيق بروتوكول الأمان وتأمين الكتل البرمجية للمستند.`);
 }
 
-// 🛠️ المحرك السادس: محرك الأرشفة الرقمية والتوافقية المعيارية القياسية (S-06)
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const complianceProfile = settings.pdfaCompliance || 'PDF/A-2b';
   const context = pdfDoc.context;
@@ -198,7 +173,6 @@ async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSe
 
   pdfDoc.catalog.set(context.obj('OutputIntents'), context.array([outputIntentRef]));
   pdfDoc.setProducer(`Mocha Advanced Engine [Compliant with ${complianceProfile}]`);
-  console.log(`[Mocha Engine]: تم حقن وسم مطابقة الأرشفة الدولية (${complianceProfile}) بنجاح.`);
 }
 
 // -------------------------------------------------------------------
@@ -211,10 +185,8 @@ async function processPdfBuffer(
   settings: ProcessingSettings = {}
 ): Promise<Buffer> {
   try {
-    // تحميل الملف الأولي إلى كائن برمجى نشط للتحكم في بايتاته
     let currentDoc = await PDFDocument.load(buffer);
     
-    // تشغيل نظام توجيه الأوامر الصارم بناءً على العملية المطلوبة من لوحة التحكم
     switch (operation) {
       case 'compress':
         await executeCompressOperation(currentDoc, settings);
@@ -233,72 +205,81 @@ async function processPdfBuffer(
       case 'review':
       case 'annotate_file':
         await executePdfAnnotation(currentDoc, settings);
-يُرجى استخدام الرمز البرمجي بحذر.
-break;
-case 'encrypt':
-case 'protect_file':
-await executePdfSecurity(currentDoc, settings);
-break;
-case 'pdfa':
-case 'convert_compliance':
-await executePdfACompliance(currentDoc, settings);
-break;
-default:
-console.log([Mocha Engine]: أمر عام أو غير معروف (${operation})، سيتم تحديث ترويسة الملف الافتراضية.);
-currentDoc.setProducer(Mocha Engine [Processed: ${operation}]);
-break;
+        break;
+
+      case 'encrypt':
+      case 'protect_file':
+        await executePdfSecurity(currentDoc, settings);
+        break;
+
+      case 'pdfa':
+      case 'convert_compliance':
+        await executePdfACompliance(currentDoc, settings);
+        break;
+
+      default:
+        currentDoc.setProducer(`Mocha Engine [Processed: ${operation}]`);
+        break;
+    }
+
+    const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
+    // إكمال إغلاق دالة الحفظ لضمان عدم حدوث نقص بالبايتات
+    const finalBytes = await currentDoc.save({
+      useObjectStreams: true,
+      addMissingPageBytestream: false,
+      updateFieldValues: isExtreme
+    });
+
+    return Buffer.from(finalBytes);
+
+  } catch (error: any) {
+    console.error('❌ خطأ داخل المحرك الرئيسي:', error);
+    return buffer;
+  }
 }
-// حفظ المستند ببنيته الجديدة وصيغته الرقمية بعد المعالجة الفعلية
-const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
-const finalBytes = await currentDoc.save({
-useObjectStreams: true,           // تجميع الكائنات لتقليص حجم البايت الفعلي
-addMissingPageBytestream: false,   // منع حشو بايتات عشوائية
-updateFieldValues: isExtreme
-});
-return Buffer.from(finalBytes);
-} catch (error: any) {
-console.error('❌ خطأ طارئ داخل المحرك الرئيسي أثناء المعالجة العميقة:', error);
-return buffer; // العودة الآمنة للمنع الفوري لانهيار السيرفر في حال رفع ملف تالف
-}
-}
+
 // -------------------------------------------------------------------
 // 5. موجهات طلبات الـ HTTP (Next.js API Routes)
 // -------------------------------------------------------------------
 export async function POST(req: NextRequest) {
-try {
-const { folderId, googleDrive } = getGoogleDriveClient();
-const contentType = req.headers.get('content-type') || '';
-// مسار معالجة الأوامر والعمليات الصارمة (JSON Payload)
-if (contentType.includes('application/json')) {
-const body = await req.json();
-const { action, operation, fileId, settings } = body;
-if (action === 'process_operation') {
-let targetFileId = fileId;
-if (!targetFileId) {
-const listRes = await googleDrive.files.list({
-q: '${folderId}' in parents and trashed = false,
-orderBy: 'createdTime desc',
-pageSize: 1,
-});
-if (listRes.data.files && listRes.data.files.length > 0) {
-targetFileId = listRes.data.files[0].id;
-}
-}
-if (!targetFileId) {
-return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ المعالجة.' }, { status: 400 });
-}
-const fileResponse = await googleDrive.files.get(
-{ fileId: targetFileId, alt: 'media' },
-{ responseType: 'arraybuffer' }
-);
-const rawBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
-// استدعاء المنسق لمعالجة المستند بناءً على الأوامر والاعدادات الصارمة
-const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings);
-// تحديث الملف في جوجل درايف بالنسخة المعالجة الجديدة بالكامل
-await googleDrive.files.update({
-fileId: targetFileId,
-media: {
-mimeType: 'application/pdf',
+  try {
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const contentType = req.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      const { action, operation, fileId, settings } = body;
+
+      if (action === 'process_operation') {
+        let targetFileId = fileId;
+        
+        if (!targetFileId) {
+          const listRes = await googleDrive.files.list({
+            q: `'${folderId}' in parents and trashed = false`,
+            orderBy: 'createdTime desc',
+            pageSize: 1,
+          });
+          if (listRes.data.files && listRes.data.files.length > 0) {
+            targetFileId = listRes.data.files[0].id;
+          }
+        }
+
+        if (!targetFileId) {
+          return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ المعالجة.' }, { status: 400 });
+        }
+
+        const fileResponse = await googleDrive.files.get(
+          { fileId: targetFileId, alt: 'media' },
+          { responseType: 'arraybuffer' }
+        );
+
+        const rawBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
+        const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings);
+
+        await googleDrive.files.update({
+          fileId: targetFileId,
+          media: {
+            mimeType: 'application/pdf',
 body: Readable.from(processedBuffer),
 },
 });
@@ -310,13 +291,12 @@ return NextResponse.json({
 success: true,
 kind: 'file',
 filename: fileMeta.data.name,
-message: تم تنفيذ كافة الإعدادات والعمليات الفعّالة للعملية (${operation}) وتحديث المستند في الخزنة بنجاح.,
+message: تمت معالجة وتحديث المستند في الخزنة بنجاح.,
 downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
 timestamp: new Date().toISOString()
 });
 }
 }
-// مسار رفع أجزاء الملف التراكمي (FormData Multipart)
 const formData = await req.formData();
 const chunk = formData.get('chunk') as File;
 const filename = formData.get('filename') as string;
