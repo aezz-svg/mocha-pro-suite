@@ -5,24 +5,23 @@ export const dynamic = 'force-dynamic';
 
 function getGoogleDriveClient() {
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!clientEmail || !privateKey || !folderId) {
     throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم.');
   }
 
-  // 1. تنظيف البريد الإلكتروني والمفتاح من أي مسافات زائدة أو علامات اقتباس مشوهة ناتجة عن حفظ Vercel
+  // 1. تنظيف البريد الإلكتروني والمفتاح من أي مسافات أو علامات اقتباس مشوهة ناتجة عن Vercel
   const cleanedEmail = clientEmail.trim().replace(/^["']|["']\$/g, '');
   let cleanedKey = privateKey.trim().replace(/^["']|["']\$/g, '');
 
-  // 2. معالجة السطور المائلة وتحويل الـ \n النصية إلى فواصل أسطر حقيقية يفهمها تشفير RSA لجوجل
+  // 2. تصحيح فواصل الأسطر المزدوجة والمفردة وتحويلها الحقيقي إلى هيكل مفاتيح RSA الخاص بجوجل
   cleanedKey = cleanedKey.replace(/\\n/g, '\n');
-  
+
   const auth = new google.auth.JWT({
     email: cleanedEmail,
     key: cleanedKey,
-    // ✅ تم تصحيح نطاق الصلاحيات إلى الرابط الموثق والكامل لجوجل درايف
     scopes: ['https://googleapis.com'], 
   });
 
@@ -66,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    // ✅ تم استعادة الرابط والمسار الرسمي لإنشاء بوابات الرفع القابل للاستئناف (Resumable Upload)
+    // فتح قناة الرفع القابلة للاستئناف (Resumable Upload) لتخطي قيود حجم Vercel (413) نهائياً
     const googleResponse = await fetch(
       'https://googleapis.com',
       {
@@ -90,7 +89,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
     }
 
-    // تنظيف المجلد قبل إتمام عملية الرفع لتهيئة المساحة للملف الجديد
+    // تنظيف المجلد قبل استكمال عملية الرفع
     await enforceVaultStorageLimit(googleDrive, folderId);
 
     return NextResponse.json({
