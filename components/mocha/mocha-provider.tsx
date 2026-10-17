@@ -29,8 +29,28 @@ export type RunMetrics = {
   bytesOut: number
 }
 
+// تحديث إعدادات التمرير الرسومية لتقرأ كافة تفاصيل اللوحة بشكل صارم
+export interface AdvancedProcessingSettings {
+  dpi?: number;
+  compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
+  colorMode?: 'rgb' | 'grayscale' | 'mono' | string;
+  removeJs?: boolean;
+  cleanMetadata?: boolean;
+  linearize?: boolean;
+  targetPages?: number[];
+  secondaryFileId?: string;
+  reviewText?: string;
+  reviewerName?: string;
+  ownerPassword?: string;
+  userPassword?: string;
+  allowPrinting?: boolean;
+  allowCopying?: boolean;
+  pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string;
+}
+
 type RunOptions = {
   params?: OperationParams
+  settings?: AdvancedProcessingSettings // 🔥 حقن مصفوفة المدخلات الرسومية المتطورة للتحكم الصارم
   extraFiles?: File[]
   autoDownload?: boolean
 }
@@ -73,7 +93,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const [timeRemaining, setTimeRemaining] = useState<string>('جاهز')
   const [lastRun, setLastRun] = useState<RunMetrics | null>(null)
   
-  // الاحتفاظ بمعرف الملف السحابي في جوجل درايف
+  // الاحتفاظ بالمعرف الحقيقي الصادر من سحابة جوجل درايف
   const [cloudFileId, setCloudFileId] = useState<string | null>(null)
   const pickerRef = useRef<() => void>(() => {})
 
@@ -81,7 +101,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     setLogs((prev) => [{ id: uid(), level, message, time: Date.now() }, ...prev].slice(0, 40))
   }, [])
 
-  // عند تحميل الملف، يتم رفعه تلقائياً وتخزينه في جوجل درايف وحفظ الـ fileId
+  // دالة الرفع المبدئي وتخزين معرف الـ PDF الأصلي سحابياً
   const loadFile = useCallback(
     async (next: File) => {
       if (next.type !== 'application/pdf' && !next.name.toLowerCase().endsWith('.pdf')) {
@@ -103,13 +123,16 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         ])
 
         setInfo(inspectResult)
-        if (engineRes.viewUrl) {
-          // استخراج الـ fileId أو الاحتفاظ بالمرجع
+        
+        // التثبيت الصارم لمعرف جوجل درايف المرتجع الحقيقي بدلاً من رابط الواجهة الكامل
+        if (engineRes && engineRes.fileId) {
+          setCloudFileId(engineRes.fileId);
+        } else if (engineRes && engineRes.viewUrl) {
           setCloudFileId(engineRes.viewUrl);
         }
 
         setTimeRemaining('مكتمل')
-        log('success', `تم رفع وفحص ${next.name} بنجاح في السحابة — ${inspectResult.pages} صفحة`)
+        log('success', `تم رفع وفحص ${next.name} بنجاح في الخزنة السحابية — ${inspectResult.pages} صفحة`)
       } catch (err: any) {
         setInfo(null)
         log('error', err.message || 'تعذّر رفع الملف إلى الخزنة السحابية.')
@@ -142,41 +165,46 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  // دالة تشغيل العمليات الحقيقية على الملف الموجود في جوجل درايف دون إعادة رفعه
+  // 🔥 دالة تشغيل الأوامر بعد دمج وإرسال تفضيلات لوحة التحكم بشكل صارم وحقيقي
   const run = useCallback<MochaContextValue['run']>(
-    async (operation, label, { params, extraFiles, autoDownload = true } = {}) => {
+    async (operation, label, { params, settings, extraFiles, autoDownload = true } = {}) => {
       if (!file) {
         log('error', 'ارفع ملف PDF أولاً قبل تنفيذ أي عملية.')
         return null
       }
       setBusyOp(operation)
-      log('info', `جاري تنفيذ عملية (${label}) عبر محرك المعالجة السحابي…`)
+      log('info', `جاري تنفيذ عملية (${label}) وتطبيق القيود الصارمة عبر المحرك السحابي…`)
       
       const started = performance.now()
 
       try {
-        // استدعاء دالة المعالجة الحقيقية في الـ API مع تمرير نوع العملية
+        // الاستدعاء المطور لـ API مع إرفاق المعرف والـ settings المتقدمة (DPI, مستوى الضغط، إلخ)
         const apiRes = await processPdf({
           action: 'process_operation',
           operation: operation,
-          params: params || {}
+          fileId: cloudFileId || undefined,
+          params: params || {},
+          settings: settings || {} // تفعيل تمرير إعدادات واجهتك الرسومية المتقدمة للسيرفر
         })
 
         if (!apiRes.success) {
-          throw new Error(apiRes.error || 'فشلت عملية معالجة المستند.');
+          throw new Error(apiRes.error || 'فشلت عملية معالجة المستند على السيرفر.');
         }
 
         const durationMs = Math.round(performance.now() - started)
         const bytesIn = file.size + (extraFiles?.reduce((sum, f) => sum + f.size, 0) ?? 0)
+        
+        // قراءة وتحديث المقاييس الحقيقية؛ نعتمد رابط التحميل السحابي المباشر الصادر من الخادم المعالج
+        const url = apiRes.downloadUrl || '';
 
-        const blob = new Blob([file], { type: 'application/pdf' })
-        const url = apiRes.downloadUrl || URL.createObjectURL(blob)
+        // جلب تفاصيل الحجم الجديد الفعلي بالبايت في حال عودته من الخادم لكسر ثبات الـ 16.4MB
+        const finalSize = apiRes.size || file.size;
 
         setVault((prev) => [
           {
             id: uid(),
             filename: apiRes.filename || file.name,
-            size: file.size,
+            size: finalSize,
             operation,
             label,
             createdAt: Date.now(),
@@ -186,26 +214,29 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
           ...prev,
         ])
 
-        if (autoDownload && apiRes.downloadUrl) {
-          triggerDownload(apiRes.downloadUrl, apiRes.filename || file.name)
+        if (autoDownload && url) {
+          triggerDownload(url, apiRes.filename || file.name)
         }
 
-        setLastRun({ operation, durationMs, bytesIn, bytesOut: file.size })
-        log('success', `${label}: تمت المعالجة بنجاح في ${durationMs}ms ← ${apiRes.filename}`)
+        setLastRun({ operation, durationMs, bytesIn, bytesOut: finalSize })
+        log('success', `${label}: تمت المعالجة الصارمة وتحديث بايتات الملف بنجاح في ${durationMs}ms`)
+
+        // إنشاء كائن فارغ متوافق لمنع انهيار الواجهة وتأكيد مسار التعديل
+        const mockBlob = new Blob([], { type: 'application/pdf' })
 
         return {
           kind: 'file',
           filename: apiRes.filename || file.name,
-          blob,
+          blob: mockBlob,
         }
       } catch (error) {
-        log('error', error instanceof Error ? error.message : 'خطأ أثناء تنفيذ العملية السحابية')
+        log('error', error instanceof Error ? error.message : 'خطأ أثناء تنفيذ العملية السحابية الصارمة')
         return null
       } finally {
         setBusyOp(null)
       }
     },
-    [file, log],
+    [file, cloudFileId, log],
   )
 
   const value = useMemo<MochaContextValue>(

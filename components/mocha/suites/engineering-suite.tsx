@@ -25,13 +25,15 @@ export function EngineeringSuite() {
   const colorFactor = { RGB: 1, Grayscale: 0.7, Monochrome: 0.35 }[colorMode]
   const estimate = file ? file.size * levelFactor * colorFactor * Math.min(1, (dpi / 300) * 1.3) : 0
 
-  const optimizeParams = {
+  // تجهيز مصفوفة الإعدادات المتقدمة لإرسالها بشكل حقيقي وصارم للـ API السحابي
+  const advancedSettings = {
     dpi,
-    color_mode: colorMode,
-    level,
-    strip_metadata: stripMetadata,
-    remove_javascript: removeJs,
+    compressionLevel: level,
+    colorMode: colorMode.toLowerCase(),
+    removeJs,
+    cleanMetadata: stripMetadata,
     linearize,
+    pdfaCompliance: `PDF/A-${conformance}`
   }
 
   return (
@@ -101,16 +103,17 @@ export function EngineeringSuite() {
         </fieldset>
 
         <div className="mt-auto grid gap-2 sm:grid-cols-2">
-          <ActionButton op="compress" icon={Zap} onClick={() => run('compress', 'تنفيذ الضغط', { params: optimizeParams })}>
+          {/* 🔥 ربط الزر الحقيقي وتمرير مصفوفة الـ settings المتقدمة والصارمة إلى دالة الـ run المحدثة */}
+          <ActionButton op="compress" icon={Zap} onClick={() => run('compress', 'تنفيذ الضغط', { settings: advancedSettings })}>
             تنفيذ الضغط
           </ActionButton>
           <ActionButton
             op="sanitize"
             variant="ghost"
             icon={Sparkles}
-            onClick={() => run('sanitize', 'تنظيف البيانات الوصفية', { params: { strip_metadata: true, remove_javascript: removeJs } })}
+            onClick={() => run('compress', 'تنظيف البيانات الوصفية', { settings: { ...advancedSettings, compressionLevel: 'low' } })}
           >
-            تنظيف فقط
+            تنفيذ التنظيف الفعلي
           </ActionButton>
         </div>
       </GlassPanel>
@@ -142,12 +145,13 @@ export function EngineeringSuite() {
               <option value="3b">PDF/A-3b</option>
             </SelectInput>
           </Field>
+          {/* 🔥 ربط زر الأرشفة الدولي وتمرير معيار الـ PDF/A الصارم برمجياً إلى السيرفر */}
           <ActionButton
             op="pdfa"
             variant="signal"
             icon={Archive}
             className="mt-auto"
-            onClick={() => run('pdfa', `التحويل إلى PDF/A-${conformance}`, { params: { conformance, strip_metadata: stripMetadata } })}
+            onClick={() => run('pdfa', `التحويل إلى PDF/A-${conformance}`, { settings: advancedSettings })}
           >
             تحويل إلى PDF/A
           </ActionButton>

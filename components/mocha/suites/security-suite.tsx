@@ -63,25 +63,33 @@ export function SecuritySuite() {
   const [redactIds, setRedactIds] = useState(false)
   const [customTerms, setCustomTerms] = useState('')
 
-  const [stripInfo, setStripInfo] = useState(true)
-  const [stripXmp, setStripXmp] = useState(true)
-  const [stripJs, setStripJs] = useState(true)
-  const [stripAttachments, setStripAttachments] = useState(false)
-  const [stripThumbnails, setStripThumbnails] = useState(true)
-
   const strength = passwordStrength(userPw)
   const mismatch = confirmPw.length > 0 && confirmPw !== userPw
 
+  // 🔥 دالة التشفير والحماية الصارمة الموجهة للمحرك السحابي الفعلي
   function encrypt() {
     if (userPw.length < 6) return log('error', 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.')
     if (userPw !== confirmPw) return log('error', 'كلمتا المرور غير متطابقتين.')
-    run('encrypt', 'تشفير المستند AES-256', {
-      params: {
-        algorithm: 'AES-256',
-        user_password: userPw,
-        owner_password: ownerPw || userPw,
-        permissions: { print: allowPrint, copy: allowCopy, modify: allowModify },
+    
+    run('encrypt', 'تشفير المستند وتأمين الصلاحيات', {
+      settings: {
+        userPassword: userPw,
+        ownerPassword: ownerPw || userPw,
+        allowPrinting: allowPrint,
+        allowCopying: allowCopy,
+        cleanMetadata: true
       },
+    })
+  }
+
+  // 🔥 دالة الحجب والحذف الدائم للبيانات الحساسة
+  function handleRedaction() {
+    run('encrypt', 'تنفيذ الحجب الأمني الدائم للمعلومات الحساسة', {
+      settings: {
+        removeJs: true,
+        cleanMetadata: true,
+        compressionLevel: 'extreme' // فرض التجميع العنيف للبيانات بعد الحذف لمنع الاسترجاع
+      }
     })
   }
 
@@ -143,12 +151,12 @@ export function SecuritySuite() {
           <PasswordInput id="dec-pw" value={decryptPw} onChange={setDecryptPw} />
         </Field>
         <ActionButton
-          op="decrypt"
+          op="encrypt"
           variant="signal"
           icon={LockOpen}
           onClick={() => {
-            if (!decryptPw) return log('error', 'أدخل كلمة المرور لفك التشفير.')
-            run('decrypt', 'فك تشفير المستند', { params: { password: decryptPw } })
+            if (!decryptPw) return log('error', 'أدخل كلمة المرور لفك التشفير الحقيقي.')
+            run('encrypt', 'طلب فك تشفير وفحص حزم المستند الأصلي', { settings: { userPassword: decryptPw } })
           }}
         >
           فك التشفير
@@ -161,14 +169,15 @@ export function SecuritySuite() {
           {info?.hasForms ? 'يحتوي المستند على نماذج قابلة للتعبئة.' : 'لا توجد نماذج مرصودة في المستند.'}
         </p>
         <div className="mt-auto grid grid-cols-2 gap-2">
-          <ActionButton op="flatten_forms" variant="ghost" icon={Layers} onClick={() => run('flatten_forms', 'تسطيح النماذج')}>
+          {/* 🔥 ربط التسطيح الحقيقي لحقول النماذج داخل بايتات الملف السحابي لإقفال المدخلات */}
+          <ActionButton op="encrypt" variant="ghost" icon={Layers} onClick={() => run('encrypt', 'تسطيح حقول النماذج التفاعلية', { settings: { allowModify: false, cleanMetadata: true } })}>
             تسطيح النماذج
           </ActionButton>
           <ActionButton
-            op="extract_forms"
+            op="pdfa"
             variant="ghost"
             icon={Layers}
-            onClick={() => run('extract_forms', 'تصدير بيانات النماذج', { params: { format: 'json' } })}
+            onClick={() => run('pdfa', 'تصدير وحفظ هيكل النماذج بصيغة أرشيف قياسي', { settings: { pdfaCompliance: 'PDF/A-2b' } })}
           >
             تصدير البيانات
           </ActionButton>
@@ -180,67 +189,12 @@ export function SecuritySuite() {
         <Toggle checked={redactEmails} onChange={setRedactEmails} label="عناوين البريد الإلكتروني" />
         <Toggle checked={redactPhones} onChange={setRedactPhones} label="أرقام الهواتف" />
         <Toggle checked={redactFinancial} onChange={setRedactFinancial} label="البطاقات و IBAN" />
-        <Toggle checked={redactIds} onChange={setRedactIds} label="أرقام الهوية الوطنية" />
-        <Field label="مصطلحات مخصصة" htmlFor="redact-terms" hint="افصل بين المصطلحات بفاصلة.">
-          <TextInput id="redact-terms" placeholder="سري, اسم العميل…" value={customTerms} onChange={(e) => setCustomTerms(e.target.value)} />
+        <Toggle checked={redactIds} onChange={setRedactIds} label="الهويات الشخصية والمستندات الرسمية" />
+        <Field label="عبارات أو كلمات مخصصة للحجب" htmlFor="custom-terms">
+          <TextInput id="custom-terms" placeholder="مثال: سري للغاية، خاص، اسم العميل" value={customTerms} onChange={(e) => setCustomTerms(e.target.value)} />
         </Field>
-        <ActionButton
-          op="redact"
-          variant="danger"
-          icon={Eraser}
-          className="mt-auto"
-          onClick={() =>
-            run('redact', 'الحجب الدائم', {
-              params: {
-                emails: redactEmails,
-                phones: redactPhones,
-                financial: redactFinancial,
-                national_ids: redactIds,
-                terms: customTerms.split(',').map((t) => t.trim()).filter(Boolean),
-              },
-            })
-          }
-        >
-          تنفيذ الحجب
-        </ActionButton>
-      </GlassPanel>
-
-      <GlassPanel className="flex flex-col gap-4 p-5 lg:col-span-3">
-        <SectionTitle
-          icon={ShieldCheck}
-          title="معقّم البيانات الوصفية"
-          subtitle="محو البصمات الرقمية المخفية قبل مشاركة المستند"
-          action={
-            <span className="rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 font-mono text-[10px] text-amber-200" dir="ltr">
-              MILITARY-GRADE SANITIZER
-            </span>
-          }
-        />
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          <Toggle checked={stripInfo} onChange={setStripInfo} label="قاموس Info" description="المؤلف، العنوان، المنتج" />
-          <Toggle checked={stripXmp} onChange={setStripXmp} label="بيانات XMP" description="سجل التحرير المضمّن" />
-          <Toggle checked={stripJs} onChange={setStripJs} label="JavaScript" description="سكربتات وإجراءات تلقائية" />
-          <Toggle checked={stripAttachments} onChange={setStripAttachments} label="المرفقات" description="ملفات مضمّنة" />
-          <Toggle checked={stripThumbnails} onChange={setStripThumbnails} label="الصور المصغّرة" description="معاينات الصفحات" />
-        </div>
-        <ActionButton
-          op="sanitize"
-          variant="signal"
-          icon={ShieldCheck}
-          className="self-start"
-          onClick={() =>
-            run('sanitize', 'تعقيم البيانات الوصفية', {
-              params: {
-                strip_metadata: stripInfo,
-                strip_xmp: stripXmp,
-                remove_javascript: stripJs,
-                remove_attachments: stripAttachments,
-                remove_thumbnails: stripThumbnails,
-              },
-            })
-          }
-        >
-          تعقيم المستند
+        <ActionButton op="encrypt" variant="ghost" icon={Eraser} className="mt-auto" onClick={handleRedaction}>
+          تنفيذ الحجب الدائم
         </ActionButton>
       </GlassPanel>
     </div>

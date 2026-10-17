@@ -125,13 +125,18 @@ export function ReviewSuite() {
           <ActionButton variant="ghost" icon={Trash2} onClick={() => setAnnotations([])} disabled={annotations.length === 0}>
             مسح الكل
           </ActionButton>
+          {/* 🔥 ربط زر تطبيق الترميزات الفعلي بنظام كود السيرفر وتمرير النصوص */}
           <ActionButton
-            op="annotate"
+            op="review"
             icon={Highlighter}
             onClick={() => {
-              if (annotations.length === 0) return log('error', 'أضف ترميزاً واحداً على الأقل.')
-              run('annotate', `تطبيق ${annotations.length} ترميز`, {
-                params: { author, annotations: annotations.map(({ id: _id, ...a }) => a) },
+              if (annotations.length === 0) return log('error', 'أضف ترميزاً واحداً على الأقل من اللوحة قبل الحفظ الفعلي.')
+              run('annotate_file', `تطبيق ${annotations.length} ترميز مراجعة حقيقي`, {
+                settings: {
+                  reviewText: annotations.map(a => a.text || TOOLS.find(t => t.id === a.type)?.label).join(' | '),
+                  reviewerName: author,
+                  targetPages: [page - 1]
+                },
               })
             }}
           >
@@ -198,29 +203,16 @@ function AnnotationMark({ annotation: a }: { annotation: Annotation }) {
     case 'highlight':
       return <span className="pointer-events-none absolute h-3 w-28 -translate-x-1/2 -translate-y-1/2 rounded-sm opacity-50" style={{ ...style, backgroundColor: a.color }} />
     case 'underline':
-      return <span className="pointer-events-none absolute h-0.5 w-28 -translate-x-1/2" style={{ ...style, backgroundColor: a.color }} />
+      return <span className="pointer-events-none absolute h-0.5 w-28 -translate-x-1/2 -translate-y-1/2 rounded-sm" style={{ ...style, backgroundColor: a.color }} />
     case 'strikeout':
-      return <span className="pointer-events-none absolute h-0.5 w-28 -translate-x-1/2 -translate-y-1/2" style={{ ...style, backgroundColor: a.color }} />
-    case 'rectangle':
-      return <span className="pointer-events-none absolute size-16 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2" style={{ ...style, borderColor: a.color }} />
-    case 'stamp':
-      return (
-        <span
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 -rotate-12 rounded border-2 px-2 py-0.5 font-mono text-[10px] font-bold"
-          style={{ ...style, borderColor: a.color, color: a.color }}
-        >
-          {a.text}
-        </span>
-      )
+      return <span className="pointer-events-none absolute h-0.5 w-28 -translate-x-1/2 -translate-y-1/2" style={{ ...style, backgroundColor: a.color, backgroundImage: 'linear-gradient(to right, transparent 50%, white 50%)', backgroundSize: '4px 100%' }} />
     case 'note':
-      return (
-        <span
-          className="pointer-events-none absolute flex max-w-28 -translate-x-1/2 -translate-y-1/2 items-start gap-1 rounded-md p-1.5 text-[9px] leading-tight text-black shadow-lg"
-          style={{ ...style, backgroundColor: a.color }}
-        >
-          <StickyNote className="size-2.5 shrink-0" aria-hidden />
-          {a.text}
-        </span>
-      )
+      return <StickyNote className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2" style={{ ...style, color: a.color }} />
+    case 'rectangle':
+      return <span className="pointer-events-none absolute h-10 w-24 -translate-x-1/2 -translate-y-1/2 rounded border-2" style={{ ...style, borderColor: a.color }} />
+    case 'stamp':
+      return <span className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded border-2 border-dashed px-1.5 py-0.5 font-sans text-[9px] font-bold tracking-wider opacity-80 rotate-12" style={{ ...style, color: a.color, borderColor: a.color }}>APPROVED</span>
+    default:
+      return null
   }
 }

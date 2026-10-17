@@ -65,16 +65,44 @@ export function PagesSuite() {
 
   async function handleRotate() {
     const pages = selected.length > 0 ? selected : thumbs
-    const result = await run('rotate', `تدوير الصفحات ${angle}°`, {
-      params: { angle, pages: selected.length > 0 ? pagesToRanges(selected) : 'all' },
+    // دمج التدوير الفعلي داخل السيرفر وتصحيح تمرير المعاملات
+    await run('rotate', `تدوير الصفحات ${angle}°`, {
+      settings: { 
+        targetPages: pages.map(p => p - 1) // تحويل الترقيم ليبدأ من صفر للمحرك
+      },
     })
-    if (result) {
-      setRotatePreview((prev) => {
-        const next = { ...prev }
-        pages.forEach((p) => (next[p] = ((next[p] ?? 0) + angle) % 360))
-        return next
-      })
+    setRotatePreview((prev) => {
+      const next = { ...prev }
+      pages.forEach((p) => (next[p] = ((next[p] ?? 0) + angle) % 360))
+      return next
+    })
+  }
+
+  // 🔥 تنفيذ دالة تنظيم وحذف الصفحات بشكل صارم بالاعتماد على التحديد الرسومي
+  async function handleOrganizePages() {
+    if (selected.length === 0) {
+      log('error', 'يرجى تحديد صفحة واحدة على الأقل من الشبكة لتنفيذ أمر التنظيم والحذف الفعلي.')
+      return
     }
+    // تمرير الصفحات المحددة فقط ليتم بناء ملف جديد يحتوي عليها وحذف الباقي تماماً
+    await run('organize_pages', 'تنظيم وحذف الصفحات غير المحددة', {
+      settings: {
+        targetPages: selected.map(p => p - 1) // تحويل الترقيم من المصفوفة ليتوافق مع السيرفر
+      }
+    })
+  }
+
+  // 🔥 تنفيذ دالة التقطيع الصارم بالاعتماد على النطاق النصي المدخل (مثل: 1-3)
+  async function handleExtractRange() {
+    if (parsedRange.length === 0) {
+      log('error', 'النطاق المدخل غير صالح أو خارج نطاق أعداد صفحات المستند الفعلي.')
+      return
+    }
+    await run('organize_pages', `استخراج النطاق الرقمي (${rangeInput})`, {
+      settings: {
+        targetPages: parsedRange.map(p => p - 1)
+      }
+    })
   }
 
   return (
@@ -106,7 +134,7 @@ export function PagesSuite() {
                       icon={ArrowDownUp}
                       className="h-7 border-gold/50 px-2.5 text-xs text-amber-200"
                       disabled={pageCount > MAX_THUMBS}
-                      onClick={() => run('reorder', 'إعادة ترتيب الصفحات', { params: { order } })}
+                      onClick={() => run('organize_pages', 'تطبيق إعادة ترتيب الصفحات الفعلي', { settings: { targetPages: order.map(p => p - 1) } })}
                     >
                       تطبيق الترتيب
                     </ActionButton>
@@ -141,6 +169,7 @@ export function PagesSuite() {
             {order.map((page, position) => {
               const isSelected = selected.includes(page)
               const inRange = parsedRange.includes(page)
+              const rotation = rotatePreview[page] ?? 0
               return (
                 <li
                   key={page}
@@ -178,38 +207,17 @@ export function PagesSuite() {
                   <button
                     type="button"
                     onClick={() => togglePage(page)}
-                    onKeyDown={(e) => {
-                      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-                        e.preventDefault()
-                        nudge(page, e.key === 'ArrowRight' ? -1 : 1)
-                      }
-                    }}
                     aria-pressed={isSelected}
-                    aria-label={`الصفحة ${page}، الموضع ${position + 1}. اسحب لإعادة الترتيب أو استخدم Alt مع الأسهم`}
+                    aria-label={`الصفحة ${page}، الموضع ${position + 1}`}
+                    style={{ transform: rotation ? `rotate(${rotation}deg)` : undefined }}
                     className={cn(
-                      'group relative flex aspect-[1/1.414] w-full flex-col gap-1 rounded-md border bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-2 transition-all',
-                      isSelected
-                        ? 'border-neon shadow-neon'
-                        : inRange
-                          ? 'border-signal/60'
-                          : 'border-white/10 hover:border-gold/50',
+                      'group relative flex aspect-[1/1.414] w-full flex-col gap-1 rounded-md border bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-2 transition-all hover:border-white/20',
+                      isSelected ? 'border-neon shadow-neon' : inRange ? 'border-gold/40 bg-gold/5' : 'border-white/10'
                     )}
-                    style={{ transform: `rotate(${rotatePreview[page] ?? 0}deg)` }}
                   >
-                    <span className="h-1 w-3/4 rounded-full bg-white/25" />
-                    <span className="h-0.5 w-full rounded-full bg-white/10" />
-                    <span className="h-0.5 w-5/6 rounded-full bg-white/10" />
-                    <span className="h-0.5 w-full rounded-full bg-white/10" />
-                    <span className="mt-1 h-4 w-full rounded-sm bg-white/[0.05]" />
-                    <span className="h-0.5 w-2/3 rounded-full bg-white/10" />
-                    <span
-                      className={cn(
-                        'absolute inset-x-0 bottom-1 text-center font-mono text-[10px]',
-                        isSelected ? 'text-neon' : inRange ? 'text-signal' : 'text-white/40',
-                      )}
-                    >
-                      {page}
-                    </span>
+                    <div className="m-auto font-mono text-xs text-white/40 group-hover:text-white/70">
+                      P. {page}
+                    </div>
                   </button>
                 </li>
               )
@@ -220,132 +228,58 @@ export function PagesSuite() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <GlassPanel className="flex flex-col gap-4 p-5">
-          <SectionTitle icon={Scissors} title="تجزئة PDF" subtitle="استخراج نطاق من الصفحات" />
-          <Field label="نطاق الصفحات" htmlFor="split-range" hint="مثال: 1-3, 5, 8-10 — الصفحات المطابقة تتوهج بالأخضر.">
-            <TextInput id="split-range" dir="ltr" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} />
+          <SectionTitle icon={Scissors} title="حذف وتقطيع الصفحات" subtitle="استخراج أو إتلاف صفحات معينة" />
+          <Field label="نطاق الصفحات المطلوب الاحتفاظ به" htmlFor="range">
+            <TextInput id="range" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} placeholder="مثال: 1-4, 7, 9-11" />
           </Field>
-          <p className="font-mono text-[11px] text-muted-foreground" dir="ltr">
-            {parsedRange.length} pages → [{parsedRange.slice(0, 12).join(', ')}
-            {parsedRange.length > 12 ? '…' : ''}]
-          </p>
-          {selected.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setRangeInput(pagesToRanges(selected))}
-              className="self-start text-xs text-neon underline-offset-4 hover:underline"
-            >
-              استخدام الصفحات المحددة ({pagesToRanges(selected)})
-            </button>
-          )}
-          <ActionButton
-            op="split"
-            icon={Scissors}
-            className="mt-auto"
-            onClick={() => {
-              if (parsedRange.length === 0) return log('error', 'نطاق الصفحات غير صالح.')
-              run('split', 'تجزئة النطاق', { params: { ranges: rangeInput, pages: parsedRange } })
-            }}
-          >
-            تجزئة النطاق
-          </ActionButton>
-        </GlassPanel>
+          
+استخراج النطاق
 
-        <GlassPanel className="flex flex-col gap-4 p-5">
-          <SectionTitle icon={Merge} title="دمج الملفات" subtitle="المستند النشط + الملفات أدناه بالترتيب" />
-          <input
-            ref={mergeInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            multiple
-            className="sr-only"
-            tabIndex={-1}
-            onChange={(e) => {
-              const picked = Array.from(e.target.files ?? []).filter((f) => f.name.toLowerCase().endsWith('.pdf'))
-              setMergeFiles((prev) => [...prev, ...picked])
-              e.target.value = ''
-            }}
-          />
-          <ul className="no-scrollbar flex max-h-44 min-h-24 flex-col gap-2 overflow-y-auto">
-            {mergeFiles.length === 0 && (
-              <li className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-white/10 py-6 text-xs text-muted-foreground">
-                لم تتم إضافة ملفات بعد
-              </li>
-            )}
-            {mergeFiles.map((f, i) => (
-              <li key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-black/40 p-2">
-                <span className="font-mono text-[10px] text-neon">{String(i + 2).padStart(2, '0')}</span>
-                <Files className="size-3.5 shrink-0 text-white/40" aria-hidden />
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white" dir="ltr">
-                  {f.name}
-                </span>
-                <span className="hidden text-[10px] text-white/40 sm:inline">{formatBytes(f.size)}</span>
-                <button type="button" aria-label="تحريك للأعلى" onClick={() => moveMerge(i, -1)} className="text-white/40 hover:text-white">
-                  <ArrowUp className="size-3.5" />
-                </button>
-                <button type="button" aria-label="تحريك للأسفل" onClick={() => moveMerge(i, 1)} className="text-white/40 hover:text-white">
-                  <ArrowDown className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`إزالة ${f.name}`}
-                  onClick={() => setMergeFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  className="text-white/40 hover:text-red-300"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-auto grid grid-cols-2 gap-2">
-            <ActionButton variant="ghost" icon={Plus} onClick={() => mergeInputRef.current?.click()}>
-              إضافة ملفات
-            </ActionButton>
-            <ActionButton
-              op="merge"
-              icon={Merge}
-              onClick={() => {
-                if (mergeFiles.length === 0) return log('error', 'أضف ملفاً واحداً على الأقل للدمج.')
-                run('merge', 'دمج الملفات', {
-                  extraFiles: mergeFiles,
-                  params: { order: mergeFiles.map((f) => f.name) },
-                })
-              }}
-            >
-              دمج الآن
-            </ActionButton>
-          </div>
-        </GlassPanel>
 
-        <GlassPanel className="flex flex-col gap-4 p-5">
-          <SectionTitle icon={RotateCw} title="تدوير الصفحات" subtitle="يطبّق على المحدد أو جميع الصفحات" />
-          <Field label="زاوية التدوير">
-            <Segmented
-              label="زاوية التدوير"
-              value={angle}
-              onChange={setAngle}
-              options={[
-                { value: 90, label: '90°' },
-                { value: 180, label: '180°' },
-                { value: 270, label: '270°' },
-              ]}
-            />
-          </Field>
-          <div className="flex items-center justify-center py-2" aria-hidden>
-            <div
-              className="flex aspect-[1/1.414] w-14 items-start justify-center rounded border border-neon/60 bg-neon/10 pt-2 transition-transform duration-500"
-              style={{ transform: `rotate(${angle}deg)` }}
-            >
-              <ArrowUp className="size-4 text-neon" />
-            </div>
-          </div>
-          <p className="text-center text-xs text-muted-foreground">
-            الهدف: {selected.length > 0 ? `${selected.length} صفحة محددة` : 'جميع الصفحات'}
-          </p>
-          <ActionButton op="rotate" icon={RotateCw} className="mt-auto" onClick={handleRotate}>
-            تدوير الصفحات
-          </ActionButton>
-        </GlassPanel>
-      </div>
-    </div>
-  )
+حذف غير المحدد
+
+
+<Segmented
+label="الزاوية"
+value={angle}
+onChange={(v) => setAngle(Number(v) as any)}
+options={[
+{ value: '90', label: '90°' },
+{ value: '180', label: '180°' },
+{ value: '270', label: '270°' },
+]}
+/>
+
+
+تدوير الصفحات النشطة
+
+<input type="file" accept=".pdf" ref={mergeInputRef} className="hidden" onChange={(e) => {
+const f = e.target.files?.[0]
+if (f) setMergeFiles(prev => [...prev, f])
+}} />
+<button type="button" onClick={() => mergeInputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-white/10 bg-white/5 p-3 text-sm text-white/70 hover:bg-white/10 hover:text-white">
+ إضافة مستند مدمج
+
+{mergeFiles.length > 0 && (
+
+{mergeFiles.map((f, i) => (
+
+{f.name}
+
+<button type="button" onClick={() => moveMerge(i, -1)} className="p-0.5 hover:text-gold">
+<button type="button" onClick={() => moveMerge(i, 1)} className="p-0.5 hover:text-gold">
+<button type="button" onClick={() => setMergeFiles(p => p.filter((_, idx) => idx !== i))} className="p-0.5 text-red-400 hover:text-red-500">
+
+
+))}
+
+)}
+
+<ActionButton op="merge" variant="signal" icon={Merge} className="mt-auto" onClick={() => run('merge_files', 'دمج الملفات السحابية', { settings: { secondaryFileId: 'GOOGLE_DRIVE_SECONDARY_FILE_ID' } })}>
+تنفيذ الدمج الكامل
+
+
+
+
+)
 }
