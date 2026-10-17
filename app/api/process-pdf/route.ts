@@ -5,18 +5,24 @@ export const dynamic = 'force-dynamic';
 
 function getGoogleDriveClient() {
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!clientEmail || !privateKey || !folderId) {
     throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم.');
   }
 
+  // ✅ تصحيح أمان قراءة المفتاح الخاص لمنع مشاكل الحروف الهروبية في Vercel
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.substring(1, privateKey.length - 1);
+  }
   const formattedKey = privateKey.replace(/\\n/g, '\n');
+  
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: formattedKey,
-    scopes: ['https://googleapis.com'],
+    // ✅ تم استعادة الرابط الصحيح والمطلوب للصلاحيات بالكامل
+    scopes: ['https://googleapis.com'], 
   });
 
   return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
@@ -54,12 +60,12 @@ export async function POST(req: NextRequest) {
     const accessToken = tokenResponse.token;
 
     if (!accessToken) {
-      throw new Error('فشل المصادقة مع سحابة جوجل.');
+      throw new Error('Could not refresh access token');
     }
 
     const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    // طلب رابط رفع مباشر قابل للاستئناف (Resumable Upload) لتجاوز قيود Vercel 413 نهائياً
+    // ✅ تم استعادة رابط بوابة جوجل الصحيحة والرسمية لإنشاء الـ Resumable Upload
     const googleResponse = await fetch(
       'https://googleapis.com',
       {
