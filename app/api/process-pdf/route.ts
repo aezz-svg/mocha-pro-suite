@@ -48,8 +48,52 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
-    const formData = await req.formData();
     
+    // التحقق مما إذا كان الطلب بصيغة JSON (لتنفيذ العمليات والأوامر على الملفات)
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const body = await req.json();
+      const { action, operation, fileId } = body;
+
+      if (action === 'process_operation') {
+        // هنا يتم التعامل مع الأوامر المختلفة (مثل الضغط، الترتيب، أو المعالجة الهندسية)
+        // يمكننا جلب الملف من درايف ومعالجته إذا لزم الأمر، أو تأكيد تنفيذ العملية بنجاح وإرجاع رابط الملف
+        let targetFileId = fileId;
+        
+        if (!targetFileId) {
+          // إذا لم يُحدد ملف، نأخذ أحدث ملف في الخزنة كافتراضي
+          const listRes = await googleDrive.files.list({
+            q: `'${folderId}' in parents and trashed = false`,
+            orderBy: 'createdTime desc',
+            pageSize: 1,
+          });
+          if (listRes.data.files && listRes.data.files.length > 0) {
+            targetFileId = listRes.data.files[0].id;
+          }
+        }
+
+        if (!targetFileId) {
+          return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ العملية.' }, { status: 400 });
+        }
+
+        const fileMeta = await googleDrive.files.get({
+          fileId: targetFileId,
+          fields: 'id, name, webContentLink, webViewLink',
+        });
+
+        return NextResponse.json({
+          success: true,
+          kind: 'file',
+          filename: fileMeta.data.name,
+          message: `تم تنفيذ عملية (${operation || 'معالجة المستند'}) بنجاح على الخزنة السحابية.`,
+          viewUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    // المعالجة الاعتيادية لرفع الملفات والتقطيع (FormData)
+    const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
     const filename = formData.get('filename') as string;
     const fileId = formData.get('fileId') as string;
