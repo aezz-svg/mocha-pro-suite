@@ -12,16 +12,17 @@ function getGoogleDriveClient() {
     throw new Error('متغيرات بيئة Google Drive غير مكتملة في الخادم.');
   }
 
-  // ✅ تصحيح أمان قراءة المفتاح الخاص لمنع مشاكل الحروف الهروبية في Vercel
-  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.substring(1, privateKey.length - 1);
-  }
-  const formattedKey = privateKey.replace(/\\n/g, '\n');
+  // 1. تنظيف البريد الإلكتروني والمفتاح من أي مسافات زائدة أو علامات اقتباس مشوهة ناتجة عن حفظ Vercel
+  const cleanedEmail = clientEmail.trim().replace(/^["']|["']\$/g, '');
+  let cleanedKey = privateKey.trim().replace(/^["']|["']\$/g, '');
+
+  // 2. معالجة السطور المائلة وتحويل الـ \n النصية إلى فواصل أسطر حقيقية يفهمها تشفير RSA لجوجل
+  cleanedKey = cleanedKey.replace(/\\n/g, '\n');
   
   const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: formattedKey,
-    // ✅ تم استعادة الرابط الصحيح والمطلوب للصلاحيات بالكامل
+    email: cleanedEmail,
+    key: cleanedKey,
+    // ✅ تم تصحيح نطاق الصلاحيات إلى الرابط الموثق والكامل لجوجل درايف
     scopes: ['https://googleapis.com'], 
   });
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    // ✅ تم استعادة رابط بوابة جوجل الصحيحة والرسمية لإنشاء الـ Resumable Upload
+    // ✅ تم استعادة الرابط والمسار الرسمي لإنشاء بوابات الرفع القابل للاستئناف (Resumable Upload)
     const googleResponse = await fetch(
       'https://googleapis.com',
       {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
     }
 
-    // تنظيف المجلد قبل إتمام عملية الرفع لتهيئة المساحة
+    // تنظيف المجلد قبل إتمام عملية الرفع لتهيئة المساحة للملف الجديد
     await enforceVaultStorageLimit(googleDrive, folderId);
 
     return NextResponse.json({
