@@ -50,7 +50,7 @@ export function HeroBanner() {
 
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-amber-200/90">
           <Coffee className="size-4 text-gold" aria-hidden />
-          أهلاً بك يا عزمي في القمة السيادية
+          نظام الدفعة 37 Architectural السيادي
         </p>
 
         <h1 id="hero-title" className="text-balance text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
@@ -64,7 +64,7 @@ export function HeroBanner() {
         </h1>
 
         <p className="mt-5 max-w-2xl text-pretty text-sm leading-relaxed text-white/70 sm:text-base">
-          إرث القهوة الداكنة يلتقي بالهندسة السيادية: نظّم، حرّر، راجع، شفّر، وأرشف مستنداتك عبر محرك Python محلي لا يغادر جهازك أبداً.
+          إرث القهوة الداكنة يلتقي بالهندسة السيادية: نظّم، حرّر، راجع، شفّر، وأرشف مستنداتك عبر محرك سحابي محلي لا يغادر الخزنة أبداً.
         </p>
 
         <ul className="mt-8 flex flex-wrap justify-center gap-2 sm:gap-3">
