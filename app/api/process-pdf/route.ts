@@ -1,8 +1,3 @@
-تم مراجعة الكود وتصحيح الأخطاء النحوية والرمزية الدقيقة (مثل الأقواس الزائدة وعلامات التنقيط المبعثرة في رسائل الاستجابة وتنسيق النصوص والقوالب الحرفية) التي كانت قد تسبب أخطاء بناء (Build Errors) عند الرفع والنشر.
-
-إليك **النسخة النهائية والمنقحة بالكامل** لجاهزية تشغيل ونشر بلا أخطاء:
-
-```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
@@ -372,5 +367,3 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
-```
