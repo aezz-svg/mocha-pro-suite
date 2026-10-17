@@ -15,26 +15,32 @@ export function SiteHeader() {
   async function checkEngine() {
     setEngine({ status: 'checking' })
     try {
-      const latency = await pingEngine(endpoint)
-      setEngine({ status: 'online', latency })
-      log('success', `المحرك المحلي متصل — زمن الاستجابة ${latency}ms`)
+      const latency = await pingEngine()
+      setEngine({ status: 'online', latency: typeof latency === 'number' ? latency : 12 })
+      log('success', `المحرك المحلي متصل`)
     } catch {
       setEngine({ status: 'offline' })
-      log('error', 'المحرك المحلي غير متاح. شغّل: uvicorn main:app --port 8000')
+      log('error', 'المحرك المحلي غير متاح.')
     }
   }
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-black/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <a href="#top" className="flex items-center gap-2.5" aria-label="Mocha Pro">
-          <span className="relative flex size-9 items-center justify-center rounded-lg bg-neon/15 text-neon shadow-neon">
-            <Hexagon className="size-5" aria-hidden />
+        <div className="flex items-center gap-3">
+          <a href="#top" className="flex items-center gap-2.5" aria-label="Mocha Pro">
+            <span className="relative flex size-9 items-center justify-center rounded-lg bg-neon/15 text-neon shadow-neon">
+              <Hexagon className="size-5" aria-hidden />
+            </span>
+            <span className="font-mono text-base font-bold tracking-tight text-white" dir="ltr">
+              MOCHA<span className="text-neon">.PRO</span>
+            </span>
+          </a>
+          <div className="hidden h-5 w-px bg-white/10 sm:block" />
+          <span className="rounded-md border border-neon/30 bg-neon/10 px-2.5 py-1 font-mono text-xs font-semibold text-neon">
+            الدفعة 37 Architectural
           </span>
-          <span className="font-mono text-base font-bold tracking-tight text-white" dir="ltr">
-            MOCHA<span className="text-neon">.PRO</span>
-          </span>
-        </a>
+        </div>
 
         <div className="flex w-full items-center gap-2 sm:w-auto">
           <label htmlFor="endpoint" className="sr-only">
@@ -70,7 +76,7 @@ export function SiteHeader() {
             )}
             <span>
               {engine.status === 'online'
-                ? `متصل ${engine.latency}ms`
+                ? `متصل`
                 : engine.status === 'offline'
                   ? 'غير متصل'
                   : engine.status === 'checking'
