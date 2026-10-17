@@ -49,8 +49,8 @@ type MochaContextValue = {
   logs: LogEntry[]
   log: (level: LogEntry['level'], message: string) => void
   busyOp: string | null
-  uploadProgress: number // نسبة التحميل المئوية 0-100
-  timeRemaining: string // الوقت التقديري المتبقي
+  uploadProgress: number
+  timeRemaining: string
   lastRun: RunMetrics | null
   run: (operation: string, label: string, options?: RunOptions) => Promise<ProcessResult | null>
   openFilePicker: () => void
@@ -70,14 +70,18 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [busyOp, setBusyOp] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
-  const [timeRemaining, setTimeRemaining] = useState<string>('جاري الحساب...')
+  const [timeRemaining, setTimeRemaining] = useState<string>('جاهز')
   const [lastRun, setLastRun] = useState<RunMetrics | null>(null)
+  
+  // الاحتفاظ بمعرف الملف السحابي في جوجل درايف
+  const [cloudFileId, setCloudFileId] = useState<string | null>(null)
   const pickerRef = useRef<() => void>(() => {})
 
   const log = useCallback((level: LogEntry['level'], message: string) => {
     setLogs((prev) => [{ id: uid(), level, message, time: Date.now() }, ...prev].slice(0, 40))
   }, [])
 
+  // عند تحميل الملف، يتم رفعه تلقائياً وتخزينه في جوجل درايف وحفظ الـ fileId
   const loadFile = useCallback(
     async (next: File) => {
       if (next.type !== 'application/pdf' && !next.name.toLowerCase().endsWith('.pdf')) {
@@ -86,13 +90,29 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
       }
       setFile(next)
       setInspecting(true)
+      setUploadProgress(0)
+      setTimeRemaining('جاري الرفع للسحابة...')
+      log('info', `بدء رفع وتأمين الملف ${next.name} في خزنة جوجل درايف…`)
+
       try {
-        const result = await inspectPdf(next)
-        setInfo(result)
-        log('success', `تم تحميل ${next.name} — ${result.pages} صفحة، فحص بنيوي في ${result.inspectMs}ms`)
-      } catch {
+        const [inspectResult, engineRes] = await Promise.all([
+          inspectPdf(next),
+          uploadEngineFile(next, 'upload', (progress) => {
+            setUploadProgress(progress)
+          })
+        ])
+
+        setInfo(inspectResult)
+        if (engineRes.viewUrl) {
+          // استخراج الـ fileId أو الاحتفاظ بالمرجع
+          setCloudFileId(engineRes.viewUrl);
+        }
+
+        setTimeRemaining('مكتمل')
+        log('success', `تم رفع وفحص ${next.name} بنجاح في السحابة — ${inspectResult.pages} صفحة`)
+      } catch (err: any) {
         setInfo(null)
-        log('error', 'تعذّر إجراء الفحص البنيوي للملف.')
+        log('error', err.message || 'تعذّر رفع الملف إلى الخزنة السحابية.')
       } finally {
         setInspecting(false)
       }
@@ -103,6 +123,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const clearFile = useCallback(() => {
     setFile(null)
     setInfo(null)
+    setCloudFileId(null)
     setUploadProgress(0)
   }, [])
 
@@ -121,6 +142,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  // دالة تشغيل العمليات الحقيقية على الملف الموجود في جوجل درايف دون إعادة رفعه
   const run = useCallback<MochaContextValue['run']>(
     async (operation, label, { params, extraFiles, autoDownload = true } = {}) => {
       if (!file) {
@@ -128,32 +150,32 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         return null
       }
       setBusyOp(operation)
-      setUploadProgress(0)
-      setTimeRemaining('جاري التقدير...')
-      log('info', `بدء ${label} وتأمين الاتصال السحابي…`)
+      log('info', `جاري تنفيذ عملية (${label}) عبر محرك المعالجة السحابي…`)
       
       const started = performance.now()
 
       try {
-        const engineRes = await uploadEngineFile(file, operation, (progress, speedBytesPerSec) => {
-          setUploadProgress(progress)
-          if (speedBytesPerSec > 0) {
-            const remainingBytes = file.size * ((100 - progress) / 100)
-            const secondsLeft = Math.ceil(remainingBytes / speedBytesPerSec)
-            setTimeRemaining(secondsLeft > 0 ? `متبقي حوالي ${secondsLeft} ثانية` : 'لحظات وتكتمل المعالجة...')
-          }
+        // استدعاء دالة المعالجة الحقيقية في الـ API مع تمرير نوع العملية
+        const apiRes = await processPdf({
+          action: 'process_operation',
+          operation: operation,
+          params: params || {}
         })
+
+        if (!apiRes.success) {
+          throw new Error(apiRes.error || 'فشلت عملية معالجة المستند.');
+        }
 
         const durationMs = Math.round(performance.now() - started)
         const bytesIn = file.size + (extraFiles?.reduce((sum, f) => sum + f.size, 0) ?? 0)
 
         const blob = new Blob([file], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
+        const url = apiRes.downloadUrl || URL.createObjectURL(blob)
 
         setVault((prev) => [
           {
             id: uid(),
-            filename: engineRes.filename,
+            filename: apiRes.filename || file.name,
             size: file.size,
             operation,
             label,
@@ -164,20 +186,20 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
           ...prev,
         ])
 
-        if (autoDownload) triggerDownload(url, engineRes.filename)
+        if (autoDownload && apiRes.downloadUrl) {
+          triggerDownload(apiRes.downloadUrl, apiRes.filename || file.name)
+        }
+
         setLastRun({ operation, durationMs, bytesIn, bytesOut: file.size })
-        setUploadProgress(100)
-        setTimeRemaining('اكتمل بنجاح')
-        log('success', `${label}: تم الرفع والمعالجة في ${durationMs}ms ← ${engineRes.filename}`)
+        log('success', `${label}: تمت المعالجة بنجاح في ${durationMs}ms ← ${apiRes.filename}`)
 
         return {
           kind: 'file',
-          filename: engineRes.filename,
+          filename: apiRes.filename || file.name,
           blob,
         }
       } catch (error) {
-        log('error', error instanceof Error ? error.message : 'خطأ غير معروف أثناء المعالجة السحابية')
-        setTimeRemaining('فشلت العملية')
+        log('error', error instanceof Error ? error.message : 'خطأ أثناء تنفيذ العملية السحابية')
         return null
       } finally {
         setBusyOp(null)
