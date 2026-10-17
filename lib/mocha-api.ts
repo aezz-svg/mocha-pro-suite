@@ -45,6 +45,9 @@ export function triggerDownload(url: string, filename: string): void {
   }
 }
 
+/**
+ * دالة تقطيع الملفات الذكية لرفع أحجام ضخمة بسلاسة تامة وتخطي قيود حجم Vercel 4.5MB
+ */
 export function uploadEngineFile(
   file: File, 
   operation: string,
@@ -52,75 +55,52 @@ export function uploadEngineFile(
 ): Promise<EngineResponse> {
   return new Promise(async (resolve, reject) => {
     try {
-      const initResponse = await fetch('/api/process-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          fileType: file.type || 'application/pdf',
-          action: operation
-        })
-      });
+      // 1. إنشاء الملف وتهيئة الـ ID من السيرفر
+      const initFormData = new FormData();
+      initFormData.append('filename', file.name);
+      initFormData.append('isFirst', 'true');
 
-      const initData = await initResponse.json();
-
-      if (!initResponse.ok || !initData.uploadUrl) {
-        throw new Error(initData.error || 'فشل في تهيئة القناة السحابية السيادية.');
+      const initRes = await fetch('/api/process-pdf', { method: 'POST', body: initFormData });
+      const initData = await initRes.json();
+      
+      if (!initRes.ok || !initData.fileId) {
+        throw new Error(initData.error || 'فشل تهيئة الخزنة السحابية.');
       }
 
-      const xhr = new XMLHttpRequest();
-      let lastLoaded = 0;
-      let lastTime = Date.now();
+      const fileId = initData.fileId;
+      const chunkSize = 3 * 1024 * 1024; // تقطيع الملف الفعلي برمجياً إلى أجزاء بحجم 3 ميجابايت
+      const totalChunks = Math.ceil(file.size / chunkSize);
+      
+      // 2. رفع الأجزاء المقطوعة بالتوالي
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
 
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          const percentComplete = Math.round((event.loaded / event.total) * 100);
-          const now = Date.now();
-          const timeDiff = (now - lastTime) / 1000;
-          let speed = 0;
-          if (timeDiff > 0.2) {
-            speed = (event.loaded - lastLoaded) / timeDiff;
-            lastLoaded = event.loaded;
-            lastTime = now;
-          }
-          onProgress(percentComplete, speed);
+        const chunkFormData = new FormData();
+        chunkFormData.append('chunk', chunk);
+        chunkFormData.append('fileId', fileId);
+        chunkFormData.append('filename', file.name);
+        chunkFormData.append('isFirst', 'false');
+
+        const chunkRes = await fetch('/api/process-pdf', { method: 'POST', body: chunkFormData });
+        if (!chunkRes.ok) {
+          throw new Error('فشل رفع أحد أجزاء المستند السحابية.');
         }
-      };
 
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4) {
-          // استقبال نجاح الرفع من جوجل مباشرة (تعيد 200 أو 201 مع نص فارغ)
-          if (xhr.status === 200 || xhr.status === 201) {
-            resolve({
-              kind: 'file',
-              filename: initData.safeFileName || file.name,
-              message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
-              operation: operation,
-              timestamp: new Date().toISOString()
-            });
-          } else {
-            try {
-              if (xhr.responseText) {
-                const errData = JSON.parse(xhr.responseText);
-                reject(new Error(errData.error || 'فشل رفع الملف إلى السحابة.'));
-              } else {
-                reject(new Error(`رفضت جوجل الطلب (رمز الحالة: ${xhr.status}). تحقق من CORS.`));
-              }
-            } catch (e) {
-              reject(new Error(`خطأ غير معروف في الاتصال السحابي (رمز الاستجابة: ${xhr.status}).`));
-            }
-          }
+        if (onProgress) {
+          const percentComplete = Math.round(((i + 1) / totalChunks) * 100);
+          onProgress(percentComplete, 0);
         }
-      };
+      }
 
-      xhr.onerror = function () {
-        reject(new Error('حدث خطأ في شبكة الاتصال أثناء رفع الملف المباشر.'));
-      };
-
-      xhr.open('PUT', initData.uploadUrl, true);
-      // ⚠️ هـام: لا نضع ترويسة أوتو لتجنب تعارض CORS المتصفح مع جوجل
-      xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
-      xhr.send(file);
+      resolve({
+        kind: 'file',
+        filename: file.name,
+        message: 'تم تخزين ومعالجة المستند بنجاح داخل الخزنة السحابية Mocha Vault.',
+        operation: operation,
+        timestamp: new Date().toISOString()
+      });
 
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));

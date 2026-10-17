@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 
 function getGoogleDriveClient() {
-  const clientEmail = "mocha-vault-sa@mocha-cloud-vault.iam.gserviceaccount.com";
+  const clientEmail = "mocha-vault-sa@://gserviceaccount.com";
   const folderId = "1gTgtqy0zpF0JOMRol6iaPOujjrkeZ9as";
   
-  // ✅ تم تحويل المفتاح لأسطر حقيقية منفصلة لحل خطأ الـ DECODER في Node.js تماماً وبشكل قطعي
+  // المفتاح الصافي بأسطر حقيقية لتفادي أخطاء الـ DECODER نهائياً
   const privateKey = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD5RukBTpkYEqQu
 ce9B+Mbaqwlu/DnVZFuf75hQosqyp3vLMEjTmilX+c+Oonl9hB25iVeATJgvANYi
@@ -43,7 +44,7 @@ xcqh/JfGrhdRGeqZE2K9Wun7P5oArdFqsw38/CijN3fUDAHMv0P+hofkp4jP+Knq
     scopes: ['https://googleapis.com'], 
   });
 
-  return { folderId, authClient: auth, googleDrive: google.drive({ version: 'v3', auth }) };
+  return { folderId, googleDrive: google.drive({ version: 'v3', auth }) };
 }
 
 async function enforceVaultStorageLimit(drive: any, folderId: string) {
@@ -66,58 +67,39 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { folderId, authClient, googleDrive } = getGoogleDriveClient();
-    const body = await req.json();
-    const { filename, fileType, action } = body;
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const formData = await req.formData();
+    
+    const chunk = formData.get('chunk') as File;
+    const filename = formData.get('filename') as string;
+    const fileId = formData.get('fileId') as string;
+    const isFirst = formData.get('isFirst') === 'true';
 
-    if (!filename) {
-      return NextResponse.json({ error: 'اسم الملف مفقود.' }, { status: 400 });
+    // الخطوة الأولى: إنشاء ملف فارغ في جوجل درايف وحجز الـ ID الخاص به
+    if (isFirst) {
+      const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const res = await googleDrive.files.create({
+        requestBody: { name: safeFileName, parents: [folderId] },
+        fields: 'id',
+      });
+      return NextResponse.json({ success: true, fileId: res.data.id });
     }
 
-    const tokenResponse = await authClient.getAccessToken();
-    const accessToken = tokenResponse.token;
-
-    if (!accessToken) {
-      throw new Error('Could not refresh access token');
+    if (!chunk || !fileId) {
+      return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
     }
 
-    const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-    // ✅ تم تصحيح الرابط الرسمي لفتح قناة الرفع القابلة للاستئناف لجوجل درايف
-    const googleResponse = await fetch(
-      'https://googleapis.com',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Upload-Content-Type': fileType || 'application/pdf',
-        },
-        body: JSON.stringify({
-          name: safeFileName,
-          parents: [folderId],
-          description: `Mocha Pro Suite - Resumable Vault Upload: ${action || 'process'}`,
-        }),
-      }
-    );
-
-    const uploadUrl = googleResponse.headers.get('Location');
-    if (!uploadUrl) {
-      const errText = await googleResponse.text();
-      throw new Error(`فشل إنشاء قناة الرفع السحابية: ${errText}`);
-    }
-
-    await enforceVaultStorageLimit(googleDrive, folderId);
-
-    return NextResponse.json({
-      success: true,
-      uploadUrl,
-      safeFileName,
+    // الخطوة الثانية: استقبال الجزء الحالي وحقنه داخل ملف درايف المحدد
+    const buffer = Buffer.from(await chunk.arrayBuffer());
+    await googleDrive.files.update({
+      fileId: fileId,
+      media: { mimeType: 'application/pdf', body: Readable.from(buffer) },
     });
 
+    return NextResponse.json({ success: true, fileId });
   } catch (error: any) {
-    console.error('API Error:', error);
-    return NextResponse.json({ error: error.message || 'خطأ في الخادم السحابي' }, { status: 500 });
+    console.error('Chunk API Error:', error);
+    return NextResponse.json({ error: error.message || 'خطأ في معالجة الجزء السحابي' }, { status: 500 });
   }
 }
 
