@@ -348,10 +348,11 @@ return NextResponse.json({ error: error.message || 'خطأ في معالجة أ�
 export async function GET() {
 try {
 const { folderId, googleDrive } = getGoogleDriveClient();
-const res = await googleDrive.files.list({
-q: '${folderId}' in parents and trashed = false,
-orderBy: 'createdTime desc',
-pageSize: 4,
+        const res = await googleDrive.files.list({
+          q: `'${folderId}' in parents and trashed = false`,
+          orderBy: 'createdTime desc',
+          pageSize: 4,
+
 fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
 });
 return NextResponse.json({ success: true, files: res.data.files || [] });
