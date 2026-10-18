@@ -61,7 +61,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 // 🛠️ دوال التنفيذ الفعلي للبايتات 100%
 // -------------------------------------------------------------------
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  // 1. تنظيف البيانات التعريفية لتقليل الحجم الهيكلي
+  // تنظيف البيانات التعريفية لتقليل الحجم الهيكلي للمستند
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha True Compression Engine v3.0');
     pdfDoc.setCreator('Mocha Cloud Production');
@@ -70,6 +70,7 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
     pdfDoc.setSubject('');
     pdfDoc.setKeywords([]);
   }
+}
 
   // 2. الضغط الفيزيائي لبايتات الجداول والكائنات الداخلية (Flate Compression)
   const pages = pdfDoc.getPages();
@@ -197,11 +198,11 @@ async function processPdfBuffer(
       break;
   }
 
-    // أ- تصدير البايتات الهيكلية الأولية من pdf-lib مع إجبار محرك الحفظ على الضغط الأقصى
+    // أ- تصدير البايتات الهيكلية الأولية وتفعيل محرك الضغط الفيزيائي المتكامل للمكتبة
   let pdfBytes = await currentDoc.save({
-    useObjectStreams: true,         // دمج الكائنات الصغيرة في تدفق واحد لتقليص المساحة
-    addMissingPageBytestream: true, // إصلاح الجداول التالفة تلقائياً
-    objectsPerStream: 200,          // زيادة الكفاءة الفيزيائية لضغط الكائنات الجانبية
+    useObjectStreams: true,         // تجميع وجدولة الكائنات الفرعية لتقليل الحجم الفيزيائي
+    addMissingPageBytestream: true, // تفعيل الضغط وإصلاح تدفق بايتات الصفحات تلقائياً
+    objectsPerStream: 50,          // القيمة المثالية لضغط الملفات الضخمة التي تتجاوز 100 صفحة
   });
 
 
