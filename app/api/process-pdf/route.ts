@@ -171,6 +171,7 @@ async function processPdfBuffer(
   switch (operation) {
     case 'compress':
     case 'optimize':
+      // تمرير الإعدادات المخصصة القادمة من الواجهة (DPI, Compression Level, Color Mode) للمحرك
       await executeCompressOperation(currentDoc, settings);
       break;
     case 'organize':
@@ -200,10 +201,13 @@ async function processPdfBuffer(
       break;
   }
 
+  // استخدام تدوير تدفق الكائنات البرمجية لتقليص الحجم الإضافي بناءً على مستوى الضغط المطلوب
+  const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
+  
   let pdfBytes = await currentDoc.save({
     useObjectStreams: true,         
     addMissingPageBytestream: true, 
-    objectsPerStream: 50,          
+    objectsPerStream: isExtreme ? 100 : 50, // ضغط وتكثيف الكائنات بالملف إذا طلب المستخدم ضغط أقصى
   });
 
   const security = (currentDoc as any)._physicalSecurity;
@@ -238,7 +242,7 @@ export async function POST(req: NextRequest) {
             pageSize: 1,
           });
           if (listRes.data.files && listRes.data.files.length > 0) {
-            targetFileId = listRes.data.files[i].id;
+            targetFileId = listRes.data.files[0].id;
           }
         }
 
@@ -261,6 +265,7 @@ export async function POST(req: NextRequest) {
           throw new Error('الملف الخام في الخزنة فارغ (0 بايت).');
         }
 
+        // إدخال الـ settings المبعوثة من الفرونت إند إلى أنبوب المعالجة الفعلي
         const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings || {});
         if (processedBuffer.length === 0) {
           throw new Error('فشل توليد بايتات الملف المعالج.');
