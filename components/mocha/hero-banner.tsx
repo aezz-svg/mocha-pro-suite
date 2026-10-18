@@ -1,7 +1,8 @@
+'use client'
+
 import { Coffee, Fingerprint, ShieldCheck, Zap } from 'lucide-react'
 import Image from 'next/image'
 import { AmbientAudioToggle } from './ambient-audio'
-import { StatusTicker } from './status-ticker'
 
 const pillars = [
   { icon: ShieldCheck, label: 'AES-256 سيادي' },
@@ -50,7 +51,7 @@ export function HeroBanner() {
 
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-amber-200/90">
           <Coffee className="size-4 text-gold" aria-hidden />
-          نظام الدفعة 37 Architectural السيادي
+          أهلاً بك يا عزمي في القمة السيادية
         </p>
 
         <h1 id="hero-title" className="text-balance text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
@@ -79,8 +80,6 @@ export function HeroBanner() {
           ))}
         </ul>
       </div>
-
-      <StatusTicker />
     </section>
   )
 }
