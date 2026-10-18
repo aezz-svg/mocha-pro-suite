@@ -213,13 +213,14 @@ async function processPdfBuffer(
 
   // ج- الحل الفيزيائي الجذري للضغط (إذا طلب المستخدم عملية compress)
   if (operation === 'compress' || operation === 'optimize') {
-    pdfBytes = await encryptPDF(pdfBytes, '', {
-      ownerPassword: 'MochaCompressSecret',
-      allowPrinting: true,
-      allowCopying: true,
-      allowModifying: true
-    }); 
-  }
+    return Buffer.from(pdfBytes);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const contentType = req.headers.get('content-type') || '';
+
 
   return Buffer.from(pdfBytes);
 }
