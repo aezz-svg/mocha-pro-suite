@@ -3,6 +3,8 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
+// استدعاء محرك الضغط الحقيقي والمعتمد للملفات والصور
+import { compressPDF } from '@fileslim/compress';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +56,20 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
     }
   } catch (err) {
     console.error('Vault cleanup warning:', err);
+  }
+}
+
+// دالة الضغط العميق الفيزيائية التي تعيد بناء وتخفيض دقة الصور بداخل بايتات الـ PDF
+async function executeDeepCompress(buffer: Buffer): Promise<Buffer> {
+  try {
+    // تشغيل الضغط الفيزيائي العالي وإعادة ترميز مصفوفات الصور الداخلية
+    const compressedResult = await compressPDF(buffer, {
+      mode: 'high' // تقليص عميق للمساحة مع الحفاظ على وضوح الكلمات للقراءة
+    });
+    return Buffer.from(compressedResult);
+  } catch (error) {
+    console.error('Deep compression failed, falling back to standard data streams:', error);
+    return buffer;
   }
 }
 
@@ -145,7 +161,14 @@ async function processPdfBuffer(
   googleDrive: any,
   settings: ProcessingSettings = {}
 ): Promise<Buffer> {
-  let currentDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+  let workingBuffer = buffer;
+
+  // 1. استدعاء محرك الضغط الفيزيائي العميق للصور في حالة طلب التقليص أو التحسين
+  if (operation === 'compress' || operation === 'optimize') {
+    workingBuffer = await executeDeepCompress(buffer);
+  }
+
+  let currentDoc = await PDFDocument.load(workingBuffer, { ignoreEncryption: true });
   
   switch (operation) {
     case 'compress':
