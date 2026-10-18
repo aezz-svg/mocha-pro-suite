@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
+// استدعاء المحرك البرمجي الخارجي المدمج محلياً
+import { executeExternalEngineCompress } from './local-pdf-optimizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,88 +59,21 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
-// 🛠️ محرك تقليص أبعاد الصور ودقتها فيزيائياً طبقاً للـ DPI ومستوى الضغط الممرر من أزرار الواجهة
-async function executeDeepCompress(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  try {
-    const enumerate = pdfDoc.context.enumerateIndirectObjects();
-    
-    // استخلاص القيم المدخلة من الواجهة مع وضع قيم افتراضية ذكية في حال عدم الاختيار
-    const targetDpi = settings.dpi ? Number(settings.dpi) : 150; 
-    const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
-    const isGrayscale = settings.colorMode === 'grayscale' || settings.colorMode === 'تدرج الرمادي';
-
-    // معامل تقليص الأبعاد بناءً على الـ DPI المختار (كلما قل الـ DPI زاد تقليص البكسلات فيزيائياً)
-    let scaleFactor = 1.0;
-    if (targetDpi <= 72) scaleFactor = 0.4;
-    else if (targetDpi <= 150) scaleFactor = 0.6;
-    else if (targetDpi <= 200) scaleFactor = 0.8;
-
-    if (isExtreme) scaleFactor = Math.min(scaleFactor, 0.5);
-
-    for (const [ref, object] of enumerate) {
-      if (object instanceof PDFRawStream) {
-        const dict = object.dict;
-        const subtype = dict.get(PDFName.of('Subtype'));
-        
-        // التحقق الصارم لحماية خطوط ونصوص المستند واستهداف الصور فقط
-        if (subtype === PDFName.of('Image')) {
-          const widthObj = dict.get(PDFName.of('Width'));
-          const heightObj = dict.get(PDFName.of('Height'));
-          
-          if (widthObj && heightObj) {
-            const originalWidth = (widthObj as any).numberValue || Number(widthObj.toString());
-            const originalHeight = (heightObj as any).numberValue || Number(heightObj.toString());
-            
-            // 1. إعادة حساب الأبعاد الجديدة في ترويسة الصورة (البنية الفيزيائية للـ Grid)
-            const newWidth = Math.round(originalWidth * scaleFactor);
-            const newHeight = Math.round(originalHeight * scaleFactor);
-            
-            dict.set(PDFName.of('Width'), pdfDoc.context.obj(newWidth));
-            dict.set(PDFName.of('Height'), pdfDoc.context.obj(newHeight));
-            
-            // 2. تطبيق خيار نمط الألوان المختار من الواجهة (RGB أو أبيض وأسود Grayscale)
-            if (isGrayscale) {
-              dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceGray'));
-            }
-
-            // 3. مسح قناع الشفافية لتقليص الحجم الإضافي وتجنب تعارض القنوات البرمجية في الضغط الأقصى
-            if (isExtreme) {
-              dict.delete(PDFName.of('SMask'));
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Physical image resolution compression error:', error);
-  }
-}
-
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  // تمرير مصفوفة الـ settings المدخلة لمعالجتها في المحرك الفيزيائي للصور
-  await executeDeepCompress(pdfDoc, settings);
+  // تشغيل المحرك المدمج وتغذيتة بالمتغيرات الممررة من لوحة المستخدم
+  await executeExternalEngineCompress(pdfDoc, settings);
   
   if (settings.cleanMetadata ?? true) {
-    pdfDoc.setProducer('Mocha Production Engine Native v4.0 [Dynamic Adaptive]');
+    pdfDoc.setProducer('Mocha Production Engine v7.0 [Local Injected]');
     pdfDoc.setCreator('Mocha Cloud Stack');
-    pdfDoc.setAuthor('');
-    pdfDoc.setTitle('');
-    pdfDoc.setSubject('');
-    pdfDoc.setKeywords([]);
   }
 }
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
   const totalPages = srcDoc.getPageCount();
   const pagesToKeep = settings.targetPages || [];
-
   if (pagesToKeep.length === 0) return srcDoc;
-
   const validPages = pagesToKeep.filter(p => p >= 0 && p < totalPages);
-  if (validPages.length === 0) {
-    throw new Error('أرقام الصفحات الممررة تقع خارج النطاق الفعلي للمستند.');
-  }
-
   const newPdfDoc = await PDFDocument.create();
   const copiedPages = await newPdfDoc.copyPages(srcDoc, validPages);
   copiedPages.forEach((page) => newPdfDoc.addPage(page));
@@ -146,57 +81,36 @@ async function executePageOrganization(srcDoc: PDFDocument, settings: Processing
 }
 
 async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: ProcessingSettings): Promise<PDFDocument> {
-  if (!settings.secondaryFileId) {
-    throw new Error('معرف الملف الثاني مفقود لإتمام عملية الدمج الفعلية.');
-  }
-
-  const fileBResponse = await googleDrive.files.get(
-    { fileId: settings.secondaryFileId, alt: 'media' },
-    { responseType: 'arraybuffer' }
-  );
-  const bufferB = Buffer.from(fileBResponse.data as ArrayBuffer);
-  const pdfDocB = await PDFDocument.load(bufferB, { ignoreEncryption: true });
-
+  if (!settings.secondaryFileId) throw new Error('معرف الملف الثاني مفقود لعملية الدمج.');
+  const fileBResponse = await googleDrive.files.get({ fileId: settings.secondaryFileId, alt: 'media' }, { responseType: 'arraybuffer' });
+  const pdfDocB = await PDFDocument.load(Buffer.from(fileBResponse.data as ArrayBuffer), { ignoreEncryption: true });
   const mergedPdfDoc = await PDFDocument.create();
   const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices());
   pagesA.forEach((page) => mergedPdfDoc.addPage(page));
-
   const pagesB = await mergedPdfDoc.copyPages(pdfDocB, pdfDocB.getPageIndices());
   pagesB.forEach((page) => mergedPdfDoc.addPage(page));
-
   return mergedPdfDoc;
 }
 
 async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const pages = pdfDoc.getPages();
   if (pages.length === 0) return;
-  const firstPage = pages[0];
+  const firstPage = pages;
   const { height } = firstPage.getSize();
-  
-  const reviewText = settings.reviewText || 'Mocha Verified & Approved';
-  const reviewer = settings.reviewerName || 'System Admin';
-  
-  firstPage.drawText(`[${reviewer}]: ${reviewText}`, {
-    x: 40,
-    y: height - 40,
-    size: 12,
-  });
+  firstPage.drawText(`[${settings.reviewerName || 'System'}]: ${settings.reviewText || 'Verified'}`, { x: 40, y: height - 40, size: 12 });
 }
 
 async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  pdfDoc.setProducer('Mocha Security Enforcer Pro v3.0 [Physical Encrypted]');
-  
   (pdfDoc as any)._physicalSecurity = {
     userPassword: settings.userPassword || '',
-    ownerPassword: settings.ownerPassword || 'MochaAdminSecret123',
+    ownerPassword: settings.ownerPassword || 'MochaSecret123',
     allowPrinting: settings.allowPrinting ?? true,
     allowCopying: settings.allowCopying ?? true,
   };
 }
 
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  const complianceProfile = settings.pdfaCompliance || 'PDF/A-2b';
-  pdfDoc.setProducer(`Mocha Advanced Engine [Strict Compliant with ${complianceProfile}]`);
+  pdfDoc.setProducer(`Mocha Advanced Engine [Strict Compliant With ${settings.pdfaCompliance || 'PDF/A-2b'}]`);
 }
 async function processPdfBuffer(
   buffer: Buffer, 
@@ -204,7 +118,6 @@ async function processPdfBuffer(
   googleDrive: any,
   settings: ProcessingSettings = {}
 ): Promise<Buffer> {
-  // تحميل المستند بشكل آمن مع تجاهل التشفير لتجنب الأخطاء
   let currentDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
   
   switch (operation) {
@@ -239,12 +152,11 @@ async function processPdfBuffer(
       break;
   }
 
-  // 🛠️ الحل الجذري: إعادة بناء وهيكلة تدفق بايتات الملف بالكامل (Object Streams)
-  // هذا الإجراء يدمج الكائنات المبعثرة ويقلص الحجم فيزيائياً بدون كسر تشفير الصور أو التسبب في خلل القراءة
+  // استخدام تقنية ضغط تدفق كائنات الجداول البرمجية لتقليص الحجم الإضافي المتبقي في ترويسة الملف
   let pdfBytes = await currentDoc.save({
     useObjectStreams: true,         
     addMissingPageBytestream: true, 
-    objectsPerStream: 150, // تكثيف وضغط الكائنات والهياكل الداخلية لأقصى درجة آمنة
+    objectsPerStream: 80,          
   });
 
   const security = (currentDoc as any)._physicalSecurity;
@@ -302,6 +214,7 @@ export async function POST(req: NextRequest) {
           throw new Error('الملف الخام في الخزنة فارغ (0 بايت).');
         }
 
+        // تمرير الـ settings المدخلة من الواجهة لتفعيل التحكم الفيزيائي الحركي بالكامل
         const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings || {});
         if (processedBuffer.length === 0) {
           throw new Error('فشل توليد بايتات الملف المعالج.');
@@ -343,7 +256,7 @@ export async function POST(req: NextRequest) {
           kind: 'file',
           filename: finalMeta.data.name,
           size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
-          message: 'تمت المعالجة الفعيلة وحفظ المستند بنجاح في سحابة جوجل درايف.',
+          message: 'تمت المعالجة الفيزيائية الموجهة وحفظ الملف في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
@@ -399,7 +312,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Pipeline API Error:', error);
-    return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الفعلي' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الموجه فنيًا' }, { status: 500 });
   }
 }
 
