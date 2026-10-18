@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
           console.warn('Permission warning:', permErr);
         }
 
-يُرجى استخدام الرمز البرمجي بحذر.
+
 const finalMeta = await googleDrive.files.get({
 fileId: newFileId,
 fields: 'id, name, webContentLink, webViewLink, size',
