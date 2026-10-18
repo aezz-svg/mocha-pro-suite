@@ -283,15 +283,29 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        // تفعيل صلاحية القراءة العامة (anyone -> reader) لتجنب أخطاء التحميل والتلف في المتصفح
+        try {
+          await googleDrive.permissions.create({
+            fileId: targetFileId,
+            requestBody: {
+              role: 'reader',
+              type: 'anyone',
+            },
+          });
+        } catch (permErr) {
+          console.warn('Permission warning (might already be public):', permErr);
+        }
+
         const fileMeta = await googleDrive.files.get({
           fileId: targetFileId,
-          fields: 'id, name, webContentLink, webViewLink',
+          fields: 'id, name, webContentLink, webViewLink, size',
         });
 
         return NextResponse.json({
           success: true,
           kind: 'file',
           filename: fileMeta.data.name,
+          size: fileMeta.data.size ? Number(fileMeta.data.size) : processedBuffer.length,
           message: 'تمت معالجة وتحديث المستند في الخزنة بنجاح.',
           downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
           timestamp: new Date().toISOString()
