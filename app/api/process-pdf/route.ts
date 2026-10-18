@@ -5,9 +5,6 @@ import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
 
-// -------------------------------------------------------------------
-// 1. التعريفات الهيكلية (Interfaces & Types)
-// -------------------------------------------------------------------
 interface ProcessingSettings {
   dpi?: number;
   compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
@@ -26,9 +23,6 @@ interface ProcessingSettings {
   pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string;
 }
 
-// -------------------------------------------------------------------
-// 2. دوال الربط والاتصال السحابي بجوجل درايف وحماية الخزنة
-// -------------------------------------------------------------------
 function getGoogleDriveClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -52,8 +46,8 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
       pageSize: 50,
     });
     const files = res.data.files || [];
-    if (files.length >= 3) {
-      for (let i = 2; i < files.length; i++) {
+    if (files.length >= 6) {
+      for (let i = 4; i < files.length; i++) {
         await drive.files.delete({ fileId: files[i].id });
       }
     }
@@ -62,9 +56,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
-// -------------------------------------------------------------------
-// 3. الدوال التنفيذية الفعّالة والعميقة للمعالجة بالبايت (المحركات الستة)
-// -------------------------------------------------------------------
+// دوال المحركات الستة العميقة
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha High-Compression Production Engine v2.5');
@@ -86,13 +78,11 @@ async function executePageOrganization(srcDoc: PDFDocument, settings: Processing
   const totalPages = srcDoc.getPageCount();
   const pagesToKeep = settings.targetPages || [];
 
-  if (pagesToKeep.length === 0) {
-    return srcDoc;
-  }
+  if (pagesToKeep.length === 0) return srcDoc;
 
   const validPages = pagesToKeep.filter(p => p >= 0 && p < totalPages);
   if (validPages.length === 0) {
-    throw new Error('أرقام الصفحات الممررة للواجهة تقع خارج النطاق الفعلي للمستند.');
+    throw new Error('أرقام الصفحات الممررة تقع خارج النطاق الفعلي للمستند.');
   }
 
   const newPdfDoc = await PDFDocument.create();
@@ -103,7 +93,7 @@ async function executePageOrganization(srcDoc: PDFDocument, settings: Processing
 
 async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: ProcessingSettings): Promise<PDFDocument> {
   if (!settings.secondaryFileId) {
-    throw new Error('معرف الملف الثاني (Secondary File ID) مفقود لإتمام عملية اللصق والدمج.');
+    throw new Error('معرف الملف الثاني مفقود لإتمام عملية الدمج.');
   }
 
   const fileBResponse = await googleDrive.files.get(
@@ -114,7 +104,6 @@ async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: 
   const pdfDocB = await PDFDocument.load(bufferB);
 
   const mergedPdfDoc = await PDFDocument.create();
-
   const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices());
   pagesA.forEach((page) => mergedPdfDoc.addPage(page));
 
@@ -175,76 +164,62 @@ async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSe
   pdfDoc.setProducer(`Mocha Advanced Engine [Compliant with ${complianceProfile}]`);
 }
 
-// -------------------------------------------------------------------
-// 4. المحرك الرئيسي المنسق لعمليات الـ Buffer
-// -------------------------------------------------------------------
 async function processPdfBuffer(
   buffer: Buffer, 
   operation: string, 
   googleDrive: any,
   settings: ProcessingSettings = {}
 ): Promise<Buffer> {
-  try {
-    let currentDoc = await PDFDocument.load(buffer);
-    
-    switch (operation) {
-      case 'compress':
-        await executeCompressOperation(currentDoc, settings);
-        break;
-
-      case 'organize':
-      case 'organize_pages':
-        currentDoc = await executePageOrganization(currentDoc, settings);
-        break;
-
-      case 'merge':
-      case 'merge_files':
-        currentDoc = await executePdfMerge(currentDoc, googleDrive, settings);
-        break;
-
-      case 'review':
-      case 'annotate_file':
-        await executePdfAnnotation(currentDoc, settings);
-        break;
-
-      case 'encrypt':
-      case 'protect_file':
-        await executePdfSecurity(currentDoc, settings);
-        break;
-
-      case 'pdfa':
-      case 'convert_compliance':
-        await executePdfACompliance(currentDoc, settings);
-        break;
-
-      default:
-        currentDoc.setProducer(`Mocha Engine [Processed: ${operation}]`);
-        break;
-    }
-
-    const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
-    const finalBytes = await currentDoc.save({
-      useObjectStreams: true,
-      addMissingPageBytestream: false,
-      updateFieldValues: isExtreme
-    });
-
-    return Buffer.from(finalBytes);
-
-  } catch (error: any) {
-    console.error('❌ خطأ داخل المحرك الرئيسي:', error);
-    return buffer;
+  let currentDoc = await PDFDocument.load(buffer);
+  
+  switch (operation) {
+    case 'compress':
+      await executeCompressOperation(currentDoc, settings);
+      break;
+    case 'organize':
+    case 'organize_pages':
+      currentDoc = await executePageOrganization(currentDoc, settings);
+      break;
+    case 'merge':
+    case 'merge_files':
+      currentDoc = await executePdfMerge(currentDoc, googleDrive, settings);
+      break;
+    case 'review':
+    case 'annotate_file':
+      await executePdfAnnotation(currentDoc, settings);
+      break;
+    case 'encrypt':
+    case 'protect_file':
+      await executePdfSecurity(currentDoc, settings);
+      break;
+    case 'pdfa':
+    case 'convert_compliance':
+      await executePdfACompliance(currentDoc, settings);
+      break;
+    default:
+      currentDoc.setProducer(`Mocha Engine [Processed: ${operation}]`);
+      break;
   }
+
+  const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
+  const finalBytes = await currentDoc.save({
+    useObjectStreams: true,
+    addMissingPageBytestream: false,
+    updateFieldValues: isExtreme
+  });
+
+  return Buffer.from(finalBytes);
 }
 
 // -------------------------------------------------------------------
-// 5. موجهات طلبات الـ HTTP (Next.js API Routes)
+// موجه الطلبات الموحد وفق نظام المراحل (Pipeline)
 // -------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
     const contentType = req.headers.get('content-type') || '';
 
+    // [المرحلة الثانية]: استقبال طلب تنفيذ المعالجة بعد اكتمال رفع الملف الخام
     if (contentType.includes('application/json')) {
       const body = await req.json();
       const { action, operation, fileId, settings } = body;
@@ -254,7 +229,7 @@ export async function POST(req: NextRequest) {
         
         if (!targetFileId) {
           const listRes = await googleDrive.files.list({
-            q: `'${folderId}' in parents and trashed = false`,
+            q: `'${folderId}' in parents and name contains 'MochaVault_Raw_' and trashed = false`,
             orderBy: 'createdTime desc',
             pageSize: 1,
           });
@@ -264,10 +239,10 @@ export async function POST(req: NextRequest) {
         }
 
         if (!targetFileId) {
-          return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ المعالجة.' }, { status: 400 });
+          return NextResponse.json({ error: 'خطأ في تسلسل العمليات: لم يتم العثور على الملف الخام المرفوع في الخزنة.' }, { status: 400 });
         }
 
-        // جلب الملف الأصلي الخام لمرة واحدة نظيفة
+        // سحب الملف الخام والتأكد من جلب البايتات كاملة
         const fileResponse = await googleDrive.files.get(
           { fileId: targetFileId, alt: 'media' },
           { responseType: 'arraybuffer' }
@@ -279,12 +254,20 @@ export async function POST(req: NextRequest) {
         });
 
         const rawBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
-        const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings);
+        if (rawBuffer.length === 0) {
+          throw new Error('الملف الخام المرفوع فارغ (0 بايت). يرجى إعادة محاولة الرفع.');
+        }
 
-        const originalName = sourceFileMeta.data.name || 'document.pdf';
+        // معالجة البايتات وإنتاج الملف الجديد في الذاكرة بالكامل
+        const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings || {});
+        if (processedBuffer.length === 0) {
+          throw new Error('فشل توليد بايتات الملف المعالج.');
+        }
+
+        const originalName = sourceFileMeta.data.name?.replace(/^MochaVault_Raw_\d+_/, '') || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        // إنشاء ملف جديد مستقل ومعزول للنتيجة المعالجة بدون أي تضاعف في البايتات
+        // [المرحلة الثالثة]: رفع الملف المعالج المكتمل البايتات كملف مستقل ومحمي في سحابة جوجل
         const createRes = await googleDrive.files.create({
           requestBody: {
             name: processedFileName,
@@ -299,14 +282,11 @@ export async function POST(req: NextRequest) {
 
         const newFileId = createRes.data.id;
 
-        // منح صلاحية القراءة العامة للملف المعالج الجديد لضمان التحميل الفوري السليم
+        // منح الصلاحية العامة لضمان التحميل الفوري السليم
         try {
           await googleDrive.permissions.create({
             fileId: newFileId,
-            requestBody: {
-              role: 'reader',
-              type: 'anyone',
-            },
+            requestBody: { role: 'reader', type: 'anyone' },
           });
         } catch (permErr) {
           console.warn('Permission warning:', permErr);
@@ -322,13 +302,14 @@ export async function POST(req: NextRequest) {
           kind: 'file',
           filename: finalMeta.data.name,
           size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
-          message: 'تمت معالجة المستند وحفظه بنجاح في خزنة المخرجات المستقلة.',
+          message: 'تمت معالجة المستند واكتمال حفظه بنجاح في خزنة المخرجات المستقلة.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
       }
     }
 
+    // [المرحلة الأولى]: استقبال أجزاء الملف الخام المرفوع بالتوالي
     const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
     const filename = formData.get('filename') as string;
@@ -346,7 +327,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!chunk || !fileId) {
-      return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
+      return NextResponse.json({ error: 'بيانات أجزاء الملف الخام مفقودة.' }, { status: 400 });
     }
 
     const existingFile = await googleDrive.files.get({
@@ -377,8 +358,8 @@ export async function POST(req: NextRequest) {
       filename: fileMeta.data.name
     });
   } catch (error: any) {
-    console.error('Chunk API Error:', error);
-    return NextResponse.json({ error: error.message || 'خطأ في معالجة الجزء السحابي' }, { status: 500 });
+    console.error('Pipeline API Error:', error);
+    return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة المتسلسل' }, { status: 500 });
   }
 }
 
@@ -388,7 +369,7 @@ export async function GET() {
     const res = await googleDrive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
       orderBy: 'createdTime desc',
-      pageSize: 3,
+      pageSize: 4,
       fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
     });
     return NextResponse.json({ success: true, files: res.data.files || [] });
