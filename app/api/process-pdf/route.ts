@@ -307,7 +307,7 @@ const fileId = formData.get('fileId') as string;
 const isFirst = formData.get('isFirst') === 'true';
 if (isFirst) {
 await enforceVaultStorageLimit(googleDrive, folderId);
-const safeFileName = MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')};
+const safeFileName = MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 const res = await googleDrive.files.create({
 requestBody: { name: safeFileName, parents: [folderId] },
 fields: 'id',
