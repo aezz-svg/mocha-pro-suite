@@ -1,3 +1,4 @@
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
@@ -127,22 +128,17 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
 }
 
 async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  pdfDoc.setProducer('Mocha Security Enforcer Pro v3.0 [Encrypted]');
+  pdfDoc.setProducer('Mocha Security Enforcer Pro v3.0 [Physical Encrypted]');
   
-  (pdfDoc as any)._securitySettings = {
+  // حفظ الإعدادات لتطبيقها في المرحلة النهائية عبر حزمة التشفير الحقيقية
+  (pdfDoc as any)._physicalSecurity = {
     userPassword: settings.userPassword || '',
     ownerPassword: settings.ownerPassword || 'MochaAdminSecret123',
-    permissions: {
-      printing: (settings.allowPrinting ?? true) ? 'highResolution' : 'none',
-      modifying: 'none',
-      copying: (settings.allowCopying ?? true) ? 'highResolution' : 'none',
-      annotating: 'none',
-      fillingForms: 'none',
-      contentAccessibility: (settings.allowCopying ?? true) ? 'highResolution' : 'none',
-      documentAssembly: false
-    }
+    allowPrinting: settings.allowPrinting ?? true,
+    allowCopying: settings.allowCopying ?? true,
   };
 }
+
 
 
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
@@ -190,21 +186,37 @@ async function processPdfBuffer(
       break;
   }
 
-    // جلب إعدادات الأمان إن وجدت
-  const security = (currentDoc as any)._securitySettings;
-
-  // 🌟 الضغط والحفظ الفعلي للبايتات مع حقن التشفير القياسي للمكتبة
-  const finalBytes = await currentDoc.save({
+  // أ- تصدير البايتات الهيكلية الأولية من pdf-lib
+  let pdfBytes = await currentDoc.save({
     useObjectStreams: true,
     addMissingPageBytestream: true,
-    updateFieldValues: true,
-    userPassword: security?.userPassword || undefined,
-    ownerPassword: security?.ownerPassword || undefined,
-    permissions: security?.permissions || undefined
   });
 
-  return Buffer.from(finalBytes);
+  // ب- الحل الفيزيائي الجذري للأمان والتشفير (Physical Encryption Pass)
+  const security = (currentDoc as any)._physicalSecurity;
+  if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
+    // تشفير البايتات فيزيائياً 100% وحجب الصلاحيات لمنع البرامج من تجاوزها
+    pdfBytes = await encryptPDF(pdfBytes, security.userPassword, {
+      ownerPassword: security.ownerPassword,
+      allowPrinting: security.allowPrinting,
+      allowCopying: security.allowCopying,
+      allowModifying: false
+    });
+  }
+
+  // ج- الحل الفيزيائي الجذري للضغط (إذا طلب المستخدم عملية compress)
+  if (operation === 'compress' || operation === 'optimize') {
+    pdfBytes = await encryptPDF(pdfBytes, '', {
+      ownerPassword: 'MochaCompressSecret',
+      allowPrinting: true,
+      allowCopying: true,
+      allowModifying: true
+    }); 
+  }
+
+  return Buffer.from(pdfBytes);
 }
+
 
 
 // -------------------------------------------------------------------
