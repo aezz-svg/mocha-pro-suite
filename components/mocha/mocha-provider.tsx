@@ -71,6 +71,7 @@ type MochaContextValue = {
   uploadProgress: number
   timeRemaining: string
   lastRun: RunMetrics | null
+  isReadyForProcessing: boolean // 🟢 مؤشر صارم لمدى جاهزية الملف المعالج في السحابة
   run: (operation: string, label: string, options?: RunOptions) => Promise<ProcessResult | null>
   openFilePicker: () => void
   registerFilePicker: (open: () => void) => void
@@ -93,6 +94,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const [lastRun, setLastRun] = useState<RunMetrics | null>(null)
   
   const [cloudFileId, setCloudFileId] = useState<string | null>(null)
+  const [isReadyForProcessing, setIsReadyForProcessing] = useState<boolean>(false) // 🟢 الحالة الصارمة
   const pickerRef = useRef<() => void>(() => {})
 
   const log = useCallback((level: LogEntry['level'], message: string) => {
@@ -107,6 +109,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
       }
       setFile(next)
       setInspecting(true)
+      setIsReadyForProcessing(false) // 🔒 قفل العمليات فوراً عند بدء اختيار ملف جديد
       setUploadProgress(0)
       setTimeRemaining('جاري الرفع للسحابة...')
       log('info', `بدء رفع وتأمين الملف ${next.name} في خزنة جوجل درايف…`)
@@ -127,10 +130,13 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
           setCloudFileId(engineRes.viewUrl)
         }
 
-        setTimeRemaining('مكتمل')
+        setUploadProgress(100)
+        setIsReadyForProcessing(true) // 🔓 فتح أزرار العمليات فقط بعد التأكد من اكتمال الرفع واستقرار الخزنة
+        setTimeRemaining('مكتمل وتم استقرار الخزنة')
         log('success', `تم رفع وفحص ${next.name} بنجاح في الخزنة السحابية — ${inspectResult.pages} صفحة`)
       } catch (err: any) {
         setInfo(null)
+        setIsReadyForProcessing(false)
         log('error', err.message || 'تعذّر رفع الملف إلى الخزنة السحابية.')
       } finally {
         setInspecting(false)
@@ -143,7 +149,9 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     setFile(null)
     setInfo(null)
     setCloudFileId(null)
+    setIsReadyForProcessing(false)
     setUploadProgress(0)
+    setTimeRemaining('جاهز')
   }, [])
 
   const removeFromVault = useCallback((id: string) => {
@@ -163,8 +171,8 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
 
   const run = useCallback<MochaContextValue['run']>(
     async (operation, label, { params, settings, extraFiles, autoDownload = true } = {}) => {
-      if (!file) {
-        log('error', 'ارفع ملف PDF أولاً قبل تنفيذ أي عملية.')
+      if (!file || !isReadyForProcessing) {
+        log('error', 'يجب اكتمال رفع الملف واستقرار الخزنة السحابية أولاً قبل تنفيذ أي عملية.')
         return null
       }
       setBusyOp(operation)
@@ -225,7 +233,7 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         setBusyOp(null)
       }
     },
-    [file, cloudFileId, log],
+    [file, cloudFileId, isReadyForProcessing, log],
   )
 
   const value = useMemo<MochaContextValue>(
@@ -246,13 +254,14 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
       uploadProgress,
       timeRemaining,
       lastRun,
+      isReadyForProcessing, // 🟢 إتاحة حالة الجاهزية للمكونات الخارجية
       run,
       openFilePicker: () => pickerRef.current(),
       registerFilePicker: (open) => {
         pickerRef.current = open
       },
     }),
-    [file, info, inspecting, loadFile, clearFile, endpoint, vault, removeFromVault, clearVault, logs, log, busyOp, uploadProgress, timeRemaining, lastRun, run],
+    [file, info, inspecting, loadFile, clearFile, endpoint, vault, removeFromVault, clearVault, logs, log, busyOp, uploadProgress, timeRemaining, lastRun, isReadyForProcessing, run],
   )
 
   return <MochaContext.Provider value={value}>{children}</MochaContext.Provider>

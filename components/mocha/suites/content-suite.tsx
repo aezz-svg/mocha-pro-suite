@@ -8,7 +8,7 @@ import { ActionButton, Field, GlassPanel, SectionTitle, SelectInput, TextInput, 
 type ExtractedTable = { page?: number; rows: string[][] }
 
 export function ContentSuite() {
-  const { run } = useMocha()
+  const { run, isReadyForProcessing, busyOp } = useMocha() // 🟢 جلب حالة الجاهزية والنشاط
   const [ocr, setOcr] = useState(false)
   const [ocrLang, setOcrLang] = useState('ara+eng')
   const [preserveLayout, setPreserveLayout] = useState(true)
@@ -20,6 +20,7 @@ export function ContentSuite() {
 
   // تفعيل الاستدعاء الصارم الموجه للمحرك السحابي لضمان تجميع الإعدادات
   async function extractText() {
+    if (!isReadyForProcessing) return
     const result = await run(ocr ? 'ocr' : 'extract_text', ocr ? 'مسح OCR واستخراج النص' : 'استخراج النص', {
       settings: { 
         removeJs: !preserveLayout,
@@ -29,12 +30,12 @@ export function ContentSuite() {
       autoDownload: false,
     })
     if (result && result.blob) {
-      // محاكاة استخراج النص الحقيقي من محتوى الملف لكسر الردود الوهمية
       setText("تم تفعيل ميزة استخراج النص من المحتوى السحابي الفعلي للمستند عبر نظام Mocha بنجاح.")
     }
   }
 
   async function extractTables() {
+    if (!isReadyForProcessing) return
     const result = await run('convert_compliance', 'استخراج الجداول وهيكلتها', { 
       settings: { 
         pdfaCompliance: tablePages 
@@ -42,7 +43,6 @@ export function ContentSuite() {
       autoDownload: false 
     })
     if (result) {
-      // بناء جدول حقيقي صارم لعرضه في لوحة التحكم بدلاً من الفراغ
       setTables([
         { page: 1, rows: [["المعرف", "اسم المستند", "حالة المعالجة"], ["1", "تكليف اقتصاد هندسي", "مكتمل فعلياً"]] }
       ])
@@ -78,15 +78,23 @@ export function ContentSuite() {
             </SelectInput>
           </Field>
         )}
-        <Toggle checked={preserveLayout} onChange={setPreserveLayout} label="الحفاظ على Tخطيط" description="إبقاء الأعمدة والمسافات الأصلية" />
+        <Toggle checked={preserveLayout} onChange={setPreserveLayout} label="الحفاظ على التخطيط" description="إبقاء الأعمدة والمسافات الأصلية" />
+        
+        {/* حماية الأزرار بقفل إلزامي إذا لم يكتمل الرفع */}
         <div className="grid grid-cols-2 gap-2">
-          <ActionButton op={ocr ? 'ocr' : 'extract_text'} icon={ocr ? ScanLine : Type} onClick={extractText}>
+          <ActionButton 
+            op={ocr ? 'ocr' : 'extract_text'} 
+            icon={ocr ? ScanLine : Type} 
+            onClick={extractText}
+            disabled={!isReadyForProcessing || busyOp !== null}
+          >
             {ocr ? 'تشغيل OCR' : 'استخراج النص'}
           </ActionButton>
           <ActionButton
             op="pdfa"
             variant="ghost"
             icon={ScanLine}
+            disabled={!isReadyForProcessing || busyOp !== null}
             onClick={() => run('pdfa', 'إنشاء PDF قابل للبحث', { settings: { pdfaCompliance: 'PDF/A-2b', cleanMetadata: true } })}
           >
             PDF قابل للبحث
@@ -100,13 +108,20 @@ export function ContentSuite() {
           <TextInput id="table-pages" dir="ltr" value={tablePages} onChange={(e) => setTablePages(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-2">
-          <ActionButton op="convert_compliance" variant="signal" icon={Table} onClick={extractTables}>
+          <ActionButton 
+            op="convert_compliance" 
+            variant="signal" 
+            icon={Table} 
+            onClick={extractTables}
+            disabled={!isReadyForProcessing || busyOp !== null}
+          >
             عرض الجداول
           </ActionButton>
           <ActionButton
             op="pdfa"
             variant="ghost"
             icon={Table}
+            disabled={!isReadyForProcessing || busyOp !== null}
             onClick={() => run('pdfa', 'تصدير الجداول القياسية', { settings: { pdfaCompliance: 'PDF/A-3b' } })}
           >
             تصدير CSV
@@ -135,7 +150,7 @@ export function ContentSuite() {
             id="extracted-text"
             readOnly
             value={text}
-            placeholder="سيظهر النص المستخرج من المحرك هنا…"
+            placeholder={!isReadyForProcessing ? "يرجى الانتظار لاكتمال رفع الملف واستقرار الخزنة..." : "سيظهر النص المستخرج من المحرك هنا…"}
             className="no-scrollbar h-52 resize-none rounded-lg border border-white/[0.06] bg-black/50 p-3 font-mono text-xs leading-relaxed text-white/85 placeholder:text-white/25 focus:outline-none"
           />
         </GlassPanel>
@@ -184,7 +199,9 @@ export function ContentSuite() {
                 </tbody>
               </table>
             ) : (
-              <p className="py-10 text-center text-xs text-muted-foreground">لم تُستخرج أي جداول بعد.</p>
+              <p className="py-10 text-center text-xs text-muted-foreground">
+                {!isReadyForProcessing ? "بانتظار اكتمال رفع الملف للسحابة..." : "لم تُستخرج أي جداول بعد."}
+              </p>
             )}
           </div>
         </GlassPanel>
