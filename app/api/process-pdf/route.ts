@@ -129,29 +129,21 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
 async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   pdfDoc.setProducer('Mocha Security Enforcer Pro v3.0 [Encrypted]');
   
-  const userPassword = settings.userPassword || '';
-  const ownerPassword = settings.ownerPassword || 'MochaAdminSecret123';
-
-  const isPrintingAllowed = settings.allowPrinting ?? true;
-  const isCopyingAllowed = settings.allowCopying ?? true;
-
-  if (!isPrintingAllowed || !isCopyingAllowed || userPassword !== '') {
-    // تفعيل نظام الحماية الفعلي للمستند وحقن الصلاحيات برمجياً داخل الكائن
-    (pdfDoc as any).encryptWithPassword({
-      userPassword: userPassword,
-      ownerPassword: ownerPassword,
-      permissions: {
-        printing: isPrintingAllowed ? 'highResolution' : 'none',
-        modifying: 'none',
-        copying: isCopyingAllowed,
-        annotating: 'none',
-        fillingForms: 'none',
-        contentAccessibility: isCopyingAllowed,
-        documentAssembly: false
-      }
-    });
-  }
+  (pdfDoc as any)._securitySettings = {
+    userPassword: settings.userPassword || '',
+    ownerPassword: settings.ownerPassword || 'MochaAdminSecret123',
+    permissions: {
+      printing: (settings.allowPrinting ?? true) ? 'highResolution' : 'none',
+      modifying: 'none',
+      copying: (settings.allowCopying ?? true) ? 'highResolution' : 'none',
+      annotating: 'none',
+      fillingForms: 'none',
+      contentAccessibility: (settings.allowCopying ?? true) ? 'highResolution' : 'none',
+      documentAssembly: false
+    }
+  };
 }
+
 
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const complianceProfile = settings.pdfaCompliance || 'PDF/A-2b';
@@ -198,15 +190,22 @@ async function processPdfBuffer(
       break;
   }
 
-  // 🌟 الضغط والحفظ الفعلي للبايتات لتعديل وحفظ الحجم والخصائص فيزيائياً مع تطبيق التشفير
+    // جلب إعدادات الأمان إن وجدت
+  const security = (currentDoc as any)._securitySettings;
+
+  // 🌟 الضغط والحفظ الفعلي للبايتات مع حقن التشفير القياسي للمكتبة
   const finalBytes = await currentDoc.save({
     useObjectStreams: true,
     addMissingPageBytestream: true,
-    updateFieldValues: true, 
+    updateFieldValues: true,
+    userPassword: security?.userPassword || undefined,
+    ownerPassword: security?.ownerPassword || undefined,
+    permissions: security?.permissions || undefined
   });
 
   return Buffer.from(finalBytes);
 }
+
 
 // -------------------------------------------------------------------
 // موجه الطلبات الموحد (API Route)
