@@ -5,9 +5,6 @@ import { PDFDocument } from 'pdf-lib';
 
 export const dynamic = 'force-dynamic';
 
-// -------------------------------------------------------------------
-// 1. التعريفات الهيكلية (Interfaces & Types)
-// -------------------------------------------------------------------
 interface ProcessingSettings {
   dpi?: number;
   compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
@@ -26,9 +23,6 @@ interface ProcessingSettings {
   pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string;
 }
 
-// -------------------------------------------------------------------
-// 2. دوال الربط والاتصال السحابي بجوجل درايف وحماية الخزنة
-// -------------------------------------------------------------------
 function getGoogleDriveClient() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -62,9 +56,6 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
-// -------------------------------------------------------------------
-// 3. الدوال التنفيذية الفعّالة والعميقة للمعالجة بالبايت (المحركات الستة)
-// -------------------------------------------------------------------
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha High-Compression Production Engine v2.5');
@@ -175,9 +166,6 @@ async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSe
   pdfDoc.setProducer(`Mocha Advanced Engine [Compliant with ${complianceProfile}]`);
 }
 
-// -------------------------------------------------------------------
-// 4. المحرك الرئيسي المنسق لعمليات الـ Buffer
-// -------------------------------------------------------------------
 async function processPdfBuffer(
   buffer: Buffer, 
   operation: string, 
@@ -237,9 +225,6 @@ async function processPdfBuffer(
   }
 }
 
-// -------------------------------------------------------------------
-// 5. موجهات طلبات الـ HTTP (Next.js API Routes)
-// -------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
@@ -267,47 +252,63 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ المعالجة.' }, { status: 400 });
         }
 
+        // جلب الملف الأصلي الخام
         const fileResponse = await googleDrive.files.get(
           { fileId: targetFileId, alt: 'media' },
           { responseType: 'arraybuffer' }
         );
 
+        const sourceFileMeta = await googleDrive.files.get({
+          fileId: targetFileId,
+          fields: 'name',
+        });
+
         const rawBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
         const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings);
 
-        await googleDrive.files.update({
-          fileId: targetFileId,
+        // 🌟 الحل الجذري: إنشاء ملف جديد مستقل تماماً للملف المعالج في نفس المجلد (أو مجلد المخرجات) لمنع التضارب
+        const originalName = sourceFileMeta.data.name || 'document.pdf';
+        const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+        const createRes = await googleDrive.files.create({
+          requestBody: {
+            name: processedFileName,
+            parents: [folderId],
+          },
           media: {
             mimeType: 'application/pdf',
             body: Readable.from(processedBuffer),
           },
+          fields: 'id, name, webContentLink, webViewLink, size',
         });
 
-        // تفعيل صلاحية القراءة العامة (anyone -> reader) لتجنب أخطاء التحميل والتلف في المتصفح
+        const newFileId = createRes.data.id;
+
+        // منح صلاحية القراءة العامة للملف المعالج الجديد لضمان التحميل الفوري السليم
         try {
           await googleDrive.permissions.create({
-            fileId: targetFileId,
+            fileId: newFileId,
             requestBody: {
               role: 'reader',
               type: 'anyone',
             },
           });
         } catch (permErr) {
-          console.warn('Permission warning (might already be public):', permErr);
+          console.warn('Permission warning:', permErr);
         }
 
-        const fileMeta = await googleDrive.files.get({
-          fileId: targetFileId,
+        const finalMeta = await googleDrive.files.get({
+          fileId: newFileId,
           fields: 'id, name, webContentLink, webViewLink, size',
         });
 
         return NextResponse.json({
           success: true,
           kind: 'file',
-          filename: fileMeta.data.name,
-          size: fileMeta.data.size ? Number(fileMeta.data.size) : processedBuffer.length,
-          message: 'تمت معالجة وتحديث المستند في الخزنة بنجاح.',
-          downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
+          filename: finalMeta.data.name,
+          size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
+          message: 'تمت معالجة المستند وحفظه بنجاح في خزنة المخرجات المستقلة.',
+          downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
       }
@@ -321,7 +322,7 @@ export async function POST(req: NextRequest) {
 
     if (isFirst) {
       await enforceVaultStorageLimit(googleDrive, folderId);
-      const safeFileName = `MochaVault_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const safeFileName = `MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const res = await googleDrive.files.create({
         requestBody: { name: safeFileName, parents: [folderId] },
         fields: 'id',
@@ -356,8 +357,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      success: true,
-      fileId,
+      success: fileId,
       downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
       filename: fileMeta.data.name
     });
