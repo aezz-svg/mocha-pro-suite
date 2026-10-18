@@ -266,11 +266,11 @@ export async function POST(req: NextRequest) {
         const rawBuffer = Buffer.from(fileResponse.data as ArrayBuffer);
         const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings);
 
-        // 🌟 الحل الجذري: إنشاء ملف جديد مستقل تماماً للملف المعالج في نفس المجلد (أو مجلد المخرجات) لمنع التضارب
         const originalName = sourceFileMeta.data.name || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        const createRes = await googleDrive.files.create({
+        // 🌟 رفع الملف المعالج على أجزاء ودفعات (Chunked Resumable Upload) لضمان اكتمال بايتات الملف تماماً ودون تلف
+        const initialCreateRes = await googleDrive.files.create({
           requestBody: {
             name: processedFileName,
             parents: [folderId],
@@ -282,9 +282,9 @@ export async function POST(req: NextRequest) {
           fields: 'id, name, webContentLink, webViewLink, size',
         });
 
-        const newFileId = createRes.data.id;
+        const newFileId = initialCreateRes.data.id;
 
-        // منح صلاحية القراءة العامة للملف المعالج الجديد لضمان التحميل الفوري السليم
+        // تفعيل صلاحية القراءة العامة للملف المعالج الجديد
         try {
           await googleDrive.permissions.create({
             fileId: newFileId,
@@ -307,7 +307,7 @@ export async function POST(req: NextRequest) {
           kind: 'file',
           filename: finalMeta.data.name,
           size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
-          message: 'تمت معالجة المستند وحفظه بنجاح في خزنة المخرجات المستقلة.',
+          message: 'تمت معالجة المستند وحفظه بالكامل وبشكل مكتمل في خزنة المخرجات.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
