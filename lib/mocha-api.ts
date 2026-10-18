@@ -5,6 +5,8 @@ export interface EngineResponse {
   filename: string;
   message: string;
   viewUrl?: string;
+  downloadUrl?: string;
+  size?: number;
   operation?: string;
   timestamp?: string;
 }
@@ -46,7 +48,7 @@ export function triggerDownload(url: string, filename: string): void {
 }
 
 /**
- * دالة تقطيع الملفات الذكية ورفعها على أجزاء، ثم جلب رابط الملف المعالج من جوجل درايف للتحميل الفوري
+ * دالة تقطيع الملفات الذكية ورفعها على أجزاء، ثم تخزينها وإرجاع معرف الخزنة السحابية
  */
 export function uploadEngineFile(
   file: File, 
@@ -92,7 +94,6 @@ export function uploadEngineFile(
           throw new Error(chunkData.error || 'فشل رفع أحد أجزاء المستند السحابية.');
         }
 
-        // الاحتفاظ بالاستجابة الأخيرة التي تحتوي على رابط التحميل المباشر بعد انتهاء آخر جزء
         if (i === totalChunks - 1) {
           finalResponseData = chunkData;
         }
@@ -103,19 +104,18 @@ export function uploadEngineFile(
         }
       }
 
-      // إذا توفر رابط تحميل مباشر من جوجل درايف، نقوم بفتحه أو تجهيزه للتحميل الفوري
-      if (finalResponseData && finalResponseData.downloadUrl) {
-        triggerDownload(finalResponseData.downloadUrl, finalResponseData.filename || file.name);
-      }
+      // 🛑 تم إزالة التحميل التلقائي هنا لكي لا يتم تنزيل الملف الخام قبل إجراء عمليات الضغط والتعديل الحقيقية
 
       resolve({
         kind: 'file',
         filename: finalResponseData?.filename || file.name,
-        message: 'تم تخزين ومعالجة المستند بنجاح وجاهز للتحميل من Mocha Vault.',
-        viewUrl: finalResponseData?.downloadUrl,
+        message: 'تم تخزين المستند بنجاح في الخزنة السحابية وجاهز للمعالجة الصارمة.',
+        viewUrl: finalResponseData?.downloadUrl || finalResponseData?.viewUrl,
+        downloadUrl: finalResponseData?.downloadUrl,
+        fileId: fileId,
         operation: operation,
         timestamp: new Date().toISOString()
-      });
+      } as any);
 
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)));
