@@ -1,8 +1,8 @@
-import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { PDFDocument, rgb } from 'pdf-lib';
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +31,7 @@ function getGoogleDriveClient() {
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   if (!clientId || !clientSecret || !refreshToken || !folderId) {
-    throw new Error('بيانات الربط السحابي (OAuth Environment Variables) غير مكتملة في ملف الـ .env.');
+    throw new Error('بيانات الربط السحابي غير مكتملة في ملف الـ .env.');
   }
 
   const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost');
@@ -57,11 +57,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
-// -------------------------------------------------------------------
-// 🛠️ دوال التنفيذ الفعلي للبايتات 100%
-// -------------------------------------------------------------------
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  // تنظيف البيانات التعريفية لتقليل الحجم الهيكلي للمستند
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha True Compression Engine v3.0');
     pdfDoc.setCreator('Mocha Cloud Production');
@@ -71,10 +67,6 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
     pdfDoc.setKeywords([]);
   }
 }
-
-async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
-
-
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
   const totalPages = srcDoc.getPageCount();
@@ -119,7 +111,7 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
   const pages = pdfDoc.getPages();
   if (pages.length === 0) return;
   const firstPage = pages[0];
-  const { width, height } = firstPage.getSize();
+  const { height } = firstPage.getSize();
   
   const reviewText = settings.reviewText || 'Mocha Verified & Approved';
   const reviewer = settings.reviewerName || 'System Admin';
@@ -135,7 +127,6 @@ async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSet
 async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   pdfDoc.setProducer('Mocha Security Enforcer Pro v3.0 [Physical Encrypted]');
   
-  // حفظ الإعدادات لتطبيقها في المرحلة النهائية عبر حزمة التشفير الحقيقية
   (pdfDoc as any)._physicalSecurity = {
     userPassword: settings.userPassword || '',
     ownerPassword: settings.ownerPassword || 'MochaAdminSecret123',
@@ -143,8 +134,6 @@ async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSetti
     allowCopying: settings.allowCopying ?? true,
   };
 }
-
-
 
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const complianceProfile = settings.pdfaCompliance || 'PDF/A-2b';
@@ -191,18 +180,14 @@ async function processPdfBuffer(
       break;
   }
 
-    // أ- تصدير البايتات الهيكلية الأولية وتفعيل محرك الضغط الفيزيائي المتكامل للمكتبة
   let pdfBytes = await currentDoc.save({
-    useObjectStreams: true,         // تجميع وجدولة الكائنات الفرعية لتقليل الحجم الفيزيائي
-    addMissingPageBytestream: true, // تفعيل الضغط وإصلاح تدفق بايتات الصفحات تلقائياً
-    objectsPerStream: 50,          // القيمة المثالية لضغط الملفات الضخمة التي تتجاوز 100 صفحة
+    useObjectStreams: true,         
+    addMissingPageBytestream: true, 
+    objectsPerStream: 50,          
   });
 
-
-  // ب- الحل الفيزيائي الجذري للأمان والتشفير (Physical Encryption Pass)
   const security = (currentDoc as any)._physicalSecurity;
   if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
-    // تشفير البايتات فيزيائياً 100% وحجب الصلاحيات لمنع البرامج من تجاوزها
     pdfBytes = await encryptPDF(pdfBytes, security.userPassword, {
       ownerPassword: security.ownerPassword,
       allowPrinting: security.allowPrinting,
@@ -211,25 +196,9 @@ async function processPdfBuffer(
     });
   }
 
-  // ج- الحل الفيزيائي الجذري للضغط (إذا طلب المستخدم عملية compress)
-  if (operation === 'compress' || operation === 'optimize') {
-    return Buffer.from(pdfBytes);
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const { folderId, googleDrive } = getGoogleDriveClient();
-    const contentType = req.headers.get('content-type') || '';
-
-
   return Buffer.from(pdfBytes);
 }
 
-
-
-// -------------------------------------------------------------------
-// موجه الطلبات الموحد (API Route)
-// -------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
@@ -303,18 +272,18 @@ export async function POST(req: NextRequest) {
           console.warn('Permission warning:', permErr);
         }
 
+        const finalMeta = await googleDrive.files.get({
+          fileId: newFileId,
+          fields: 'id, name, webContentLink, webViewLink, size',
+        });
 
-const finalMeta = await googleDrive.files.get({
-fileId: newFileId,
-fields: 'id, name, webContentLink, webViewLink, size',
-});
-return NextResponse.json({
-success: true,
-kind: 'file',
-filename: finalMeta.data.name,
-size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
-message: 'تمت المعالجة الفعلية وحفظ المستند بنجاح في سحابة جوجل درايف.',
-downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
+        return NextResponse.json({
+          success: true,
+          kind: 'file',
+          filename: finalMeta.data.name,
+          size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
+          message: 'تمت المعالجة الفعلية وحفظ المستند بنجاح في سحابة جوجل درايف.',
+          downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
 timestamp: new Date().toISOString()
 });
 }
@@ -326,7 +295,7 @@ const fileId = formData.get('fileId') as string;
 const isFirst = formData.get('isFirst') === 'true';
 if (isFirst) {
 await enforceVaultStorageLimit(googleDrive, folderId);
-const safeFileName = `MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+const safeFileName = MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')};
 const res = await googleDrive.files.create({
 requestBody: { name: safeFileName, parents: [folderId] },
 fields: 'id',
@@ -367,11 +336,10 @@ return NextResponse.json({ error: error.message || 'خطأ في معالجة أ�
 export async function GET() {
 try {
 const { folderId, googleDrive } = getGoogleDriveClient();
-        const res = await googleDrive.files.list({
-          q: `'${folderId}' in parents and trashed = false`,
-          orderBy: 'createdTime desc',
-          pageSize: 4,
-
+const res = await googleDrive.files.list({
+q: '${folderId}' in parents and trashed = false,
+orderBy: 'createdTime desc',
+pageSize: 4,
 fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
 });
 return NextResponse.json({ success: true, files: res.data.files || [] });
