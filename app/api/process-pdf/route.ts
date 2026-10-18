@@ -139,7 +139,6 @@ async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSe
   const complianceProfile = settings.pdfaCompliance || 'PDF/A-2b';
   pdfDoc.setProducer(`Mocha Advanced Engine [Strict Compliant with ${complianceProfile}]`);
 }
-
 async function processPdfBuffer(
   buffer: Buffer, 
   operation: string, 
@@ -284,66 +283,75 @@ export async function POST(req: NextRequest) {
           size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
           message: 'تمت المعالجة الفعلية وحفظ المستند بنجاح في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
-timestamp: new Date().toISOString()
-});
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    const formData = await req.formData();
+    const chunk = formData.get('chunk') as File;
+    const filename = formData.get('filename') as string;
+    const fileId = formData.get('fileId') as string;
+    const isFirst = formData.get('isFirst') === 'true';
+
+    if (isFirst) {
+      await enforceVaultStorageLimit(googleDrive, folderId);
+      const safeFileName = `MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const res = await googleDrive.files.create({
+        requestBody: { name: safeFileName, parents: [folderId] },
+        fields: 'id',
+      });
+      return NextResponse.json({ success: true, fileId: res.data.id });
+    }
+
+    if (!chunk || !fileId) {
+      return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
+    }
+
+    const existingFile = await googleDrive.files.get({
+      fileId: fileId,
+      alt: 'media',
+    }, { responseType: 'arraybuffer' });
+
+    const existingBuffer = Buffer.from(existingFile.data as ArrayBuffer);
+    const newChunkBuffer = Buffer.from(await chunk.arrayBuffer());
+    const combinedBuffer = Buffer.concat([existingBuffer, newChunkBuffer]);
+
+    await googleDrive.files.update({
+      fileId: fileId,
+      media: {
+        mimeType: 'application/pdf',
+        body: Readable.from(combinedBuffer),
+      },
+    });
+
+    const fileMeta = await googleDrive.files.get({
+      fileId: fileId,
+      fields: 'id, name, webContentLink, webViewLink',
+    });
+
+    return NextResponse.json({
+      success: fileId,
+      downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
+      filename: fileMeta.data.name
+    });
+  } catch (error: any) {
+    console.error('Pipeline API Error:', error);
+    return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الفعلي' }, { status: 500 });
+  }
 }
-}
-const formData = await req.formData();
-const chunk = formData.get('chunk') as File;
-const filename = formData.get('filename') as string;
-const fileId = formData.get('fileId') as string;
-const isFirst = formData.get('isFirst') === 'true';
-if (isFirst) {
-await enforceVaultStorageLimit(googleDrive, folderId);
-const safeFileName = MochaVault_Raw_${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')};
-const res = await googleDrive.files.create({
-requestBody: { name: safeFileName, parents: [folderId] },
-fields: 'id',
-});
-return NextResponse.json({ success: true, fileId: res.data.id });
-}
-if (!chunk || !fileId) {
-return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
-}
-const existingFile = await googleDrive.files.get({
-fileId: fileId,
-alt: 'media',
-}, { responseType: 'arraybuffer' });
-const existingBuffer = Buffer.from(existingFile.data as ArrayBuffer);
-const newChunkBuffer = Buffer.from(await chunk.arrayBuffer());
-const combinedBuffer = Buffer.concat([existingBuffer, newChunkBuffer]);
-await googleDrive.files.update({
-fileId: fileId,
-media: {
-mimeType: 'application/pdf',
-body: Readable.from(combinedBuffer),
-},
-});
-const fileMeta = await googleDrive.files.get({
-fileId: fileId,
-fields: 'id, name, webContentLink, webViewLink',
-});
-return NextResponse.json({
-success: fileId,
-downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
-filename: fileMeta.data.name
-});
-} catch (error: any) {
-console.error('Pipeline API Error:', error);
-return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الفعلي' }, { status: 500 });
-}
-}
+
 export async function GET() {
-try {
-const { folderId, googleDrive } = getGoogleDriveClient();
-const res = await googleDrive.files.list({
-q: '${folderId}' in parents and trashed = false,
-orderBy: 'createdTime desc',
-pageSize: 4,
-fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
-});
-return NextResponse.json({ success: true, files: res.data.files || [] });
-} catch (error: any) {
-return NextResponse.json({ error: error.message }, { status: 500 });
-}
+  try {
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const res = await googleDrive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      orderBy: 'createdTime desc',
+      pageSize: 4,
+      fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
+    });
+    return NextResponse.json({ success: true, files: res.data.files || [] });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
