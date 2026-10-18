@@ -1,10 +1,15 @@
-import { HeroBanner } from '@/components/mocha/hero-banner'
-import { MochaProvider } from '@/components/mocha/mocha-provider'
-import { SiteHeader } from '@/components/mocha/site-header'
-import { SuiteTabs } from '@/components/mocha/suite-tabs'
-import { TelemetryGrid } from '@/components/mocha/telemetry-grid'
-import { UploadZone } from '@/components/mocha/upload-zone'
-import { Vault } from '@/components/mocha/vault'
+'use client'
+
+import dynamic from 'next/dynamic'
+
+// استيراد ديناميكي مع إيقاف الـ SSR تماماً لضمان عدم حدوث أي خطأ Prerender أثناء بناء Vercel/Netlify
+const MochaProvider = dynamic(() => import('@/components/mocha/mocha-provider').then((mod) => mod.MochaProvider), { ssr: false })
+const SiteHeader = dynamic(() => import('@/components/mocha/site-header').then((mod) => mod.SiteHeader), { ssr: false })
+const HeroBanner = dynamic(() => import('@/components/mocha/hero-banner').then((mod) => mod.HeroBanner), { ssr: false })
+const UploadZone = dynamic(() => import('@/components/mocha/upload-zone').then((mod) => mod.UploadZone), { ssr: false })
+const TelemetryGrid = dynamic(() => import('@/components/mocha/telemetry-grid').then((mod) => mod.TelemetryGrid), { ssr: false })
+const SuiteTabs = dynamic(() => import('@/components/mocha/suite-tabs').then((mod) => mod.SuiteTabs), { ssr: false })
+const Vault = dynamic(() => import('@/components/mocha/vault').then((mod) => mod.Vault), { ssr: false })
 
 export default function Page() {
   return (
