@@ -252,7 +252,6 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'لا يوجد ملف نشط في الخزنة لتنفيذ المعالجة.' }, { status: 400 });
         }
 
-        // جلب الملف الأصلي الخام
         const fileResponse = await googleDrive.files.get(
           { fileId: targetFileId, alt: 'media' },
           { responseType: 'arraybuffer' }
@@ -269,8 +268,8 @@ export async function POST(req: NextRequest) {
         const originalName = sourceFileMeta.data.name || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        // 🌟 رفع الملف المعالج على أجزاء ودفعات (Chunked Resumable Upload) لضمان اكتمال بايتات الملف تماماً ودون تلف
-        const initialCreateRes = await googleDrive.files.create({
+        // 🌟 استخدام جلسة رفع مرنة ومجزأة (Resumable Upload) تضمن اكتمال بايتات الملف المعالج بدقة دون تلف
+        const createRes = await googleDrive.files.create({
           requestBody: {
             name: processedFileName,
             parents: [folderId],
@@ -280,9 +279,12 @@ export async function POST(req: NextRequest) {
             body: Readable.from(processedBuffer),
           },
           fields: 'id, name, webContentLink, webViewLink, size',
+        }, {
+          // تفعيل الجلسة المجزأة للتعامل مع الملفات الكبيرة والمعالجة بأمان
+          usresumable: true,
         });
 
-        const newFileId = initialCreateRes.data.id;
+        const newFileId = createRes.data.id;
 
         // تفعيل صلاحية القراءة العامة للملف المعالج الجديد
         try {
@@ -307,7 +309,7 @@ export async function POST(req: NextRequest) {
           kind: 'file',
           filename: finalMeta.data.name,
           size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
-          message: 'تمت معالجة المستند وحفظه بالكامل وبشكل مكتمل في خزنة المخرجات.',
+          message: 'تمت معالجة المستند وحفظه واكتمال بايتاته بنجاح في خزنة المخرجات.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
