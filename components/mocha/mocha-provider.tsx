@@ -29,28 +29,27 @@ export type RunMetrics = {
   bytesOut: number
 }
 
-// تحديث إعدادات التمرير الرسومية لتقرأ كافة تفاصيل اللوحة بشكل صارم
 export interface AdvancedProcessingSettings {
-  dpi?: number;
-  compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
-  colorMode?: 'rgb' | 'grayscale' | 'mono' | string;
-  removeJs?: boolean;
-  cleanMetadata?: boolean;
-  linearize?: boolean;
-  targetPages?: number[];
-  secondaryFileId?: string;
-  reviewText?: string;
-  reviewerName?: string;
-  ownerPassword?: string;
-  userPassword?: string;
-  allowPrinting?: boolean;
-  allowCopying?: boolean;
-  pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string;
+  dpi?: number
+  compressionLevel?: 'extreme' | 'balanced' | 'low' | string
+  colorMode?: 'rgb' | 'grayscale' | 'mono' | string
+  removeJs?: boolean
+  cleanMetadata?: boolean
+  linearize?: boolean
+  targetPages?: number[]
+  secondaryFileId?: string
+  reviewText?: string
+  reviewerName?: string
+  ownerPassword?: string
+  userPassword?: string
+  allowPrinting?: boolean
+  allowCopying?: boolean
+  pdfaCompliance?: 'PDF/A-1b' | 'PDF/A-2b' | 'PDF/A-3b' | string
 }
 
 type RunOptions = {
   params?: OperationParams
-  settings?: AdvancedProcessingSettings // 🔥 حقن مصفوفة المدخلات الرسومية المتطورة للتحكم الصارم
+  settings?: AdvancedProcessingSettings
   extraFiles?: File[]
   autoDownload?: boolean
 }
@@ -93,7 +92,6 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
   const [timeRemaining, setTimeRemaining] = useState<string>('جاهز')
   const [lastRun, setLastRun] = useState<RunMetrics | null>(null)
   
-  // الاحتفاظ بالمعرف الحقيقي الصادر من سحابة جوجل درايف
   const [cloudFileId, setCloudFileId] = useState<string | null>(null)
   const pickerRef = useRef<() => void>(() => {})
 
@@ -101,7 +99,6 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     setLogs((prev) => [{ id: uid(), level, message, time: Date.now() }, ...prev].slice(0, 40))
   }, [])
 
-  // دالة الرفع المبدئي وتخزين معرف الـ PDF الأصلي سحابياً
   const loadFile = useCallback(
     async (next: File) => {
       if (next.type !== 'application/pdf' && !next.name.toLowerCase().endsWith('.pdf')) {
@@ -119,16 +116,15 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
           inspectPdf(next),
           uploadEngineFile(next, 'upload', (progress) => {
             setUploadProgress(progress)
-          })
+          }),
         ])
 
         setInfo(inspectResult)
         
-        // التثبيت الصارم لمعرف جوجل درايف المرتجع الحقيقي بدلاً من رابط الواجهة الكامل
         if (engineRes && engineRes.fileId) {
-          setCloudFileId(engineRes.fileId);
+          setCloudFileId(engineRes.fileId)
         } else if (engineRes && engineRes.viewUrl) {
-          setCloudFileId(engineRes.viewUrl);
+          setCloudFileId(engineRes.viewUrl)
         }
 
         setTimeRemaining('مكتمل')
@@ -165,7 +161,6 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  // 🔥 دالة تشغيل الأوامر بعد دمج وإرسال تفضيلات لوحة التحكم بشكل صارم وحقيقي
   const run = useCallback<MochaContextValue['run']>(
     async (operation, label, { params, settings, extraFiles, autoDownload = true } = {}) => {
       if (!file) {
@@ -178,27 +173,22 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
       const started = performance.now()
 
       try {
-        // الاستدعاء المطور لـ API مع إرفاق المعرف والـ settings المتقدمة (DPI, مستوى الضغط، إلخ)
         const apiRes = await processPdf({
           action: 'process_operation',
           operation: operation,
           fileId: cloudFileId || undefined,
           params: params || {},
-          settings: settings || {} // تفعيل تمرير إعدادات واجهتك الرسومية المتقدمة للسيرفر
+          settings: settings || {},
         })
 
         if (!apiRes.success) {
-          throw new Error(apiRes.error || 'فشلت عملية معالجة المستند على السيرفر.');
+          throw new Error(apiRes.error || 'فشلت عملية معالجة المستند على السيرفر.')
         }
 
         const durationMs = Math.round(performance.now() - started)
         const bytesIn = file.size + (extraFiles?.reduce((sum, f) => sum + f.size, 0) ?? 0)
-        
-        // قراءة وتحديث المقاييس الحقيقية؛ نعتمد رابط التحميل السحابي المباشر الصادر من الخادم المعالج
-        const url = apiRes.downloadUrl || '';
-
-        // جلب تفاصيل الحجم الجديد الفعلي بالبايت في حال عودته من الخادم لكسر ثبات الـ 16.4MB
-        const finalSize = apiRes.size || file.size;
+        const url = apiRes.downloadUrl || ''
+        const finalSize = apiRes.size || file.size
 
         setVault((prev) => [
           {
@@ -221,7 +211,6 @@ export function MochaProvider({ children }: { children: React.ReactNode }) {
         setLastRun({ operation, durationMs, bytesIn, bytesOut: finalSize })
         log('success', `${label}: تمت المعالجة الصارمة وتحديث بايتات الملف بنجاح في ${durationMs}ms`)
 
-        // إنشاء كائن فارغ متوافق لمنع انهيار الواجهة وتأكيد مسار التعديل
         const mockBlob = new Blob([], { type: 'application/pdf' })
 
         return {
