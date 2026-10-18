@@ -72,15 +72,8 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
   }
 }
 
-  // 2. الضغط الفيزيائي لبايتات الجداول والكائنات الداخلية (Flate Compression)
-  const pages = pdfDoc.getPages();
-  for (const page of pages) {
-    const { node } = page as any;
-    if (node && typeof node.set === 'function') {
-      node.set((pdfDoc as any).context.obj('Contents'), node.Contents);
-    }
-  }
-}
+async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
+
 
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
