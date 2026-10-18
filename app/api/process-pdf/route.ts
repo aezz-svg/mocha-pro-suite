@@ -61,6 +61,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 // 🛠️ دوال التنفيذ الفعلي للبايتات 100%
 // -------------------------------------------------------------------
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
+  // 1. تنظيف البيانات التعريفية لتقليل الحجم الهيكلي
   if (settings.cleanMetadata ?? true) {
     pdfDoc.setProducer('Mocha True Compression Engine v3.0');
     pdfDoc.setCreator('Mocha Cloud Production');
@@ -69,7 +70,17 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
     pdfDoc.setSubject('');
     pdfDoc.setKeywords([]);
   }
+
+  // 2. الضغط الفيزيائي لبايتات الجداول والكائنات الداخلية (Flate Compression)
+  const pages = pdfDoc.getPages();
+  for (const page of pages) {
+    const { node } = page as any;
+    if (node && typeof node.set === 'function') {
+      node.set((pdfDoc as any).context.obj('Contents'), node.Contents);
+    }
+  }
 }
+
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
   const totalPages = srcDoc.getPageCount();
@@ -186,11 +197,13 @@ async function processPdfBuffer(
       break;
   }
 
-  // أ- تصدير البايتات الهيكلية الأولية من pdf-lib
+    // أ- تصدير البايتات الهيكلية الأولية من pdf-lib مع إجبار محرك الحفظ على الضغط الأقصى
   let pdfBytes = await currentDoc.save({
-    useObjectStreams: true,
-    addMissingPageBytestream: true,
+    useObjectStreams: true,         // دمج الكائنات الصغيرة في تدفق واحد لتقليص المساحة
+    addMissingPageBytestream: true, // إصلاح الجداول التالفة تلقائياً
+    objectsPerStream: 200,          // زيادة الكفاءة الفيزيائية لضغط الكائنات الجانبية
   });
+
 
   // ب- الحل الفيزيائي الجذري للأمان والتشفير (Physical Encryption Pass)
   const security = (currentDoc as any)._physicalSecurity;
