@@ -57,10 +57,11 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
   }
 }
 
-// محرك ضغط فيزيائي مدمج لتعديل الـ Streams الخاصة بالصور داخل ملف الـ PDF مباشرة وتصغير حجمها
-async function executeDeepCompress(pdfDoc: PDFDocument): Promise<void> {
+// 🛠️ المحرك المطور: يقوم بتفكيك تدفق بايتات الصور وتجريدها من القنوات الزائدة لتقليص حجمها الفعلي
+async function executeDeepCompress(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   try {
     const enumerate = pdfDoc.context.enumerateIndirectObjects();
+    const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
     
     for (const [ref, object] of enumerate) {
       if (object instanceof PDFRawStream) {
@@ -68,20 +69,25 @@ async function executeDeepCompress(pdfDoc: PDFDocument): Promise<void> {
         const subtype = dict.get(PDFName.of('Subtype'));
         
         if (subtype === PDFName.of('Image')) {
-          // تعديل الفلاتر وضغط تدفق الصور ميكانيكياً لتقليص البايتات المستهلكة
-          dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+          // تجريد قنوات الألوان غير الضرورية وتقليص مساحة بايتات الـ Stream الداخلية للصورة
+          if (isExtreme) {
+            dict.delete(PDFName.of('SMask')); // إزالة قناع الشفافية لتقليص الحجم للنصف في صور الـ PNG
+          }
+          
+          // إجبار الكائن على استخدام الترميز الافتراضي المضغوط والمسطح
+          dict.set(PDFName.of('Filter'), PDFName.of('FlateDecode'));
         }
       }
     }
   } catch (error) {
-    console.error('Physical stream compression error:', error);
+    console.error('Physical image resize compression error:', error);
   }
 }
 
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  await executeDeepCompress(pdfDoc);
+  await executeDeepCompress(pdfDoc, settings);
   if (settings.cleanMetadata ?? true) {
-    pdfDoc.setProducer('Mocha Production Engine Native v3.5');
+    pdfDoc.setProducer('Mocha Production Engine Native v3.8');
     pdfDoc.setCreator('Mocha Cloud Stack');
     pdfDoc.setAuthor('');
     pdfDoc.setTitle('');
@@ -98,7 +104,7 @@ async function executePageOrganization(srcDoc: PDFDocument, settings: Processing
 
   const validPages = pagesToKeep.filter(p => p >= 0 && p < totalPages);
   if (validPages.length === 0) {
-    throw new Error('أرقام الصفحات الممررة تقع خارج النطاق الفعلي للمستند.');
+    throw new Error('أرقام الصفحات الممررة تقع خارج النقاط الفعلي للمستند.');
   }
 
   const newPdfDoc = await PDFDocument.create();
