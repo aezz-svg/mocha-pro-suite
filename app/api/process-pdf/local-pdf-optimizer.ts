@@ -1,76 +1,120 @@
-// local-pdf-optimizer.ts
+
 import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import sharp from 'sharp';
 
+type CompressionSettings = {
+  dpi?: number;
+  compressionLevel?: string;
+  colorMode?: string;
+};
+
 export async function executeExternalEngineCompress(
-  pdfDoc: PDFDocument, 
-  settings: { dpi?: number; compressionLevel?: string; colorMode?: string }
+  pdfDoc: PDFDocument,
+  settings: CompressionSettings
 ): Promise<void> {
-  try {
-    const enumerate = pdfDoc.context.enumerateIndirectObjects();
-    const targetDpi = settings.dpi ? Number(settings.dpi) : 150;
-    const isExtreme = settings.compressionLevel === 'extreme' || settings.compressionLevel === 'أقصى';
-    const isGrayscale = settings.colorMode === 'grayscale' || settings.colorMode === 'تدرج الرمادي';
+  const level = (settings.compressionLevel || 'balanced').toLowerCase();
+  const colorMode = (settings.colorMode || 'rgb').toLowerCase();
 
-    const jpegQuality = isExtreme ? 55 : 70; // الحفاظ على توازن ممتاز للجودة والطباعة
+  // جودة JPEG حسب مستوى الضغط
+  const quality =
+    level === 'extreme' || level === 'أقصى' ? 40 :
+    level === 'balanced' ? 65 :
+    level === 'low' ? 82 : 65;
 
-    for (const [ref, object] of enumerate) {
-      if (object instanceof PDFRawStream) {
-        const dict = object.dict;
-        const subtype = dict.get(PDFName.of('Subtype'));
-        
-        if (subtype === PDFName.of('Image')) {
-          const widthObj = dict.get(PDFName.of('Width'));
-          const heightObj = dict.get(PDFName.of('Height'));
-          
-          if (widthObj && heightObj) {
-            const originalWidth = Number(widthObj.toString());
-            const originalHeight = Number(heightObj.toString());
-            
-            if (!isNaN(originalWidth) && !isNaN(originalHeight)) {
-              let scaleRatio = 0.75;
-              if (targetDpi <= 72 || isExtreme) scaleRatio = 0.55;
-              if (targetDpi >= 300) scaleRatio = 0.90;
+  // هذه حدود أبعاد تقريبية وليست تحويل DPI حقيقيًا.
+  const targetDpi = Math.max(36, Math.min(600, Number(settings.dpi) || 150));
+  const scaleRatio =
+    targetDpi <= 72 ? 0.50 :
+    targetDpi <= 120 ? 0.65 :
+    targetDpi <= 150 ? 0.75 :
+    targetDpi <= 200 ? 0.85 : 1;
 
-              const newWidth = Math.max(1, Math.round(originalWidth * scaleRatio));
-              const newHeight = Math.max(1, Math.round(originalHeight * scaleRatio));
+  const grayscale =
+    colorMode === 'grayscale' || colorMode === 'تدرج الرمادي';
 
-              try {
-                const originalBytes = object.contents;
+  const entries = [...pdfDoc.context.enumerateIndirectObjects()];
 
-                let sharpInstance = sharp(originalBytes).resize(newWidth, newHeight);
+  for (const [, object] of entries) {
+    if (!(object instanceof PDFRawStream)) continue;
 
-                // 🛠️ الحل السحري: معالجة الصور الشفافة وتحويل خلفيتها للأسود إلى الأبيض النقي قبل تحويلها لـ JPEG
-                sharpInstance = sharpInstance.flatten({ background: { r: 255, g: 255, b: 255 } });
+    const dict = object.dict;
+    if (dict.get(PDFName.of('Subtype')) !== PDFName.of('Image')) continue;
 
-                if (isGrayscale) {
-                  sharpInstance = sharpInstance.grayscale();
-                }
+    // لا نعدّل إلا صور JPEG ذات الفلتر المباشر.
+    // نترك الصور ذات الفلاتر المتعددة أو الأقنعة دون تغيير.
+    const filter = dict.get(PDFName.of('Filter'));
+    if (filter !== PDFName.of('DCTDecode')) continue;
 
-                const compressedImageBuffer = await sharpInstance
-                  .jpeg({ quality: jpegQuality, progressive: false, force: true })
-                  .toBuffer();
-
-                object.contents = new Uint8Array(compressedImageBuffer);
-                dict.set(PDFName.of('Width'), pdfDoc.context.obj(newWidth));
-                dict.set(PDFName.of('Height'), pdfDoc.context.obj(newHeight));
-                dict.set(PDFName.of('Length'), pdfDoc.context.obj(compressedImageBuffer.length));
-                
-                dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode')); 
-                if (isGrayscale) {
-                  dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceGray'));
-                } else {
-                  dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
-                }
-              } catch (imgError) {
-                console.warn('تخطى معالجة صورة:', imgError);
-              }
-            }
-          }
-        }
-      }
+    if (
+      dict.has(PDFName.of('SMask')) ||
+      dict.has(PDFName.of('Mask')) ||
+      dict.has(PDFName.of('DecodeParms')) ||
+      dict.has(PDFName.of('ImageMask'))
+    ) {
+      continue;
     }
-  } catch (error) {
-    console.error('خلل في محرك الضغط:', error);
+
+    const width = Number(dict.get(PDFName.of('Width'))?.toString());
+    const height = Number(dict.get(PDFName.of('Height'))?.toString());
+
+    if (
+      !Number.isSafeInteger(width) ||
+      !Number.isSafeInteger(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
+      continue;
+    }
+
+    try {
+      // محتوى DCTDecode المباشر هو بيانات JPEG المضغوطة.
+      const originalBytes = Buffer.from(object.contents);
+
+      const metadata = await sharp(originalBytes).metadata();
+      if (!metadata.width || !metadata.height) continue;
+
+      const newWidth = Math.max(1, Math.round(width * scaleRatio));
+      const newHeight = Math.max(1, Math.round(height * scaleRatio));
+
+      let pipeline = sharp(originalBytes, { failOn: 'error' })
+        .resize({
+          width: newWidth,
+          height: newHeight,
+          fit: 'fill',
+        });
+
+      // تحويل التدرج الرمادي اختياري؛ لا نغيّر مساحة اللون
+      // إلا بعد التأكد من صيغة الصورة الناتجة.
+      if (grayscale) pipeline = pipeline.grayscale();
+
+      const output = await pipeline
+        .jpeg({ quality, progressive: false })
+        .toBuffer();
+
+      // لا نستبدل الصورة إذا لم ينتج عن الضغط أي توفير.
+      if (output.length >= originalBytes.length) continue;
+
+      const outputMeta = await sharp(output).metadata();
+      if (!outputMeta.width || !outputMeta.height) continue;
+
+      // تحديث بيانات الصورة بعد نجاح التحويل فقط.
+      object.contents = new Uint8Array(output);
+
+      dict.set(PDFName.of('Width'), pdfDoc.context.obj(outputMeta.width));
+      dict.set(PDFName.of('Height'), pdfDoc.context.obj(outputMeta.height));
+      dict.set(PDFName.of('Length'), pdfDoc.context.obj(output.length));
+      dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+
+      // JPEG الناتج يكون RGB أو Gray بحسب اختيار المعالجة.
+      dict.set(
+        PDFName.of('ColorSpace'),
+        PDFName.of(grayscale ? 'DeviceGray' : 'DeviceRGB')
+      );
+
+      dict.delete(PDFName.of('DecodeParms'));
+    } catch (error) {
+      // الصورة التي لا يمكن معالجتها بأمان تبقى دون تغيير.
+      console.warn('تم تجاوز صورة PDF غير مدعومة:', error);
+    }
   }
 }
