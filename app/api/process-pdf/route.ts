@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
 import sharp from 'sharp';
 
@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
 
 interface ProcessingSettings {
   dpi?: number;
-  compressionLevel?: 'extreme' | 'balanced' | 'low' | string;
-  colorMode?: 'rgb' | 'grayscale' | 'mono' | string;
+  compressionLevel?: string;
+  colorMode?: string;
   cleanMetadata?: boolean;
   targetPages?: number[];
   secondaryFileId?: string;
@@ -20,7 +20,6 @@ interface ProcessingSettings {
   ownerPassword?: string;
   allowPrinting?: boolean;
   allowCopying?: boolean;
-  pdfaCompliance?: string;
 }
 
 function getGoogleDriveClient() {
@@ -47,44 +46,69 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
     }
   } catch (err) { console.error('Vault cleanup warning:', err); }
 }
-async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  try {
-    const enumerate = pdfDoc.context.enumerateIndirectObjects();
-    let scaleRatio = 0.50; let jpegQuality = 55;
+async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
+  // إنشاء مستند بكر ونظيف تماماً لتدمير بنية الملف القديم المتضخم
+  const flattenedDoc = await PDFDocument.create();
+  
+  let scaleRatio = 0.45;
+  let jpegQuality = 50;
 
-    if (settings.compressionLevel === 'extreme') { scaleRatio = 0.30; jpegQuality = 40; }
-    else if (settings.compressionLevel === 'low') { scaleRatio = 0.75; jpegQuality = 70; }
+  if (settings.compressionLevel === 'extreme') { scaleRatio = 0.30; jpegQuality = 35; }
+  else if (settings.compressionLevel === 'low') { scaleRatio = 0.70; jpegQuality = 65; }
 
-    const isGray = settings.colorMode === 'grayscale' || settings.colorMode === 'mono';
+  const isGray = settings.colorMode === 'grayscale' || settings.colorMode === 'mono';
+  const pages = pdfDoc.getPages();
 
-    for (const [ref, object] of enumerate) {
-      if (object instanceof PDFRawStream) {
-        const dict = object.dict;
-        if (dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+  for (let i = 0; i < pages.length; i++) {
+    const originalPage = pages[i];
+    const { width, height } = originalPage.getSize();
+    
+    // إنشاء صفحة مطابقة للأبعاد
+    const newPage = flattenedDoc.addPage([width, height]);
+    const [embeddedPage] = await flattenedDoc.embedPages([pdfDoc], [i]);
+    
+    // التقاط محتوى الصفحة الأصلي كقالب رسومي كامل
+    newPage.drawPage(embeddedPage, { x: 0, y: 0, width, height });
+
+    // تفكيك ومسح كافة الموارد الرسومية وإجبار محرك sharp على إعادة صياغتها كـ JPEG مضغوط
+    const resources = (originalPage as any).node?.Resources;
+    const xObjects = resources?.get?.(PDFName.of('XObject'));
+    
+    if (xObjects && typeof xObjects.keys === 'function') {
+      for (const key of xObjects.keys()) {
+        const xObj = xObjects.get(key);
+        if (xObj && xObj.contents && xObj.contents.length > 0) {
           try {
-            const originalBytes = object.contents;
-            let sharpInstance = sharp(Buffer.from(originalBytes));
-            const metadata = await sharpInstance.metadata();
+            let sharpInstance = sharp(Buffer.from(xObj.contents));
+            const meta = await sharpInstance.metadata();
             
-            if (metadata.width && metadata.height) {
-              const nw = Math.max(1, Math.round(metadata.width * scaleRatio));
-              const nh = Math.max(1, Math.round(metadata.height * scaleRatio));
+            if (meta.width && meta.height) {
+              const nw = Math.max(1, Math.round(meta.width * scaleRatio));
+              const nh = Math.max(1, Math.round(meta.height * scaleRatio));
+              
+              // سحق أبعاد البكسلات فيزيائياً وإلغاء التشفير المعقد القديم
               sharpInstance = sharpInstance.resize(nw, nh);
               if (isGray) sharpInstance = sharpInstance.grayscale();
 
               const compressedBuffer = await sharpInstance.jpeg({ quality: jpegQuality, force: true }).toBuffer();
-              object.contents = new Uint8Array(compressedBuffer);
-              dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
-              dict.set(PDFName.of('Length'), pdfDoc.context.obj(compressedBuffer.length));
+              
+              // حقن بايتات الـ JPEG القياسية الأنيقة المتوافقة كلياً مع أدوبي
+              xObj.contents = new Uint8Array(compressedBuffer);
+              xObj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+              xObj.dict.set(PDFName.of('Length'), flattenedDoc.context.obj(compressedBuffer.length));
             }
-          } catch (imgErr) { continue; }
+          } catch (e) { continue; }
         }
       }
     }
-  } catch (err) { console.error('Compression crash:', err); }
-  if (settings.cleanMetadata ?? true) {
-    pdfDoc.setProducer('Mocha Production Engine v7.0 [Sharp Core]'); pdfDoc.setCreator('Mocha Cloud Stack');
   }
+
+  if (settings.cleanMetadata ?? true) {
+    flattenedDoc.setProducer('Mocha Production Engine v8.0 [Raster Core]');
+    flattenedDoc.setCreator('Mocha Cloud Stack');
+  }
+  
+  return flattenedDoc;
 }
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
@@ -101,31 +125,21 @@ async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: 
   const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices()); pagesA.forEach((page) => mergedPdfDoc.addPage(page));
   const pagesB = await mergedPdfDoc.copyPages(pdfDocB, pdfDocB.getPageIndices()); pagesB.forEach((page) => mergedPdfDoc.addPage(page)); return mergedPdfDoc;
 }
-
-async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  const pages = pdfDoc.getPages(); if (pages.length === 0) return;
-  const firstPage = pages[0]; const { height } = firstPage.getSize();
-  firstPage.drawText(`[${settings.reviewerName || 'System'}]: ${settings.reviewText || 'Verified'}`, { x: 40, y: height - 40, size: 12 });
-}
-
-async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  (pdfDoc as any)._physicalSecurity = { userPassword: settings.userPassword || '', ownerPassword: settings.ownerPassword || 'MochaSecret123', allowPrinting: settings.allowPrinting ?? true, allowCopying: settings.allowCopying ?? true };
-}
 async function processPdfBuffer(buffer: Buffer, operation: string, googleDrive: any, settings: ProcessingSettings = {}): Promise<Buffer> {
   let currentDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-  switch (operation) {
-    case 'compress': case 'optimize': await executeCompressOperation(currentDoc, settings); break;
-    case 'organize': case 'organize_pages': currentDoc = await executePageOrganization(currentDoc, settings); break;
-    case 'merge': case 'merge_files': currentDoc = await executePdfMerge(currentDoc, googleDrive, settings); break;
-    case 'review': case 'annotate_file': case 'ocr': case 'extract_text': await executePdfAnnotation(currentDoc, settings); break;
-    case 'encrypt': case 'protect_file': await executePdfSecurity(currentDoc, settings); break;
-    default: currentDoc.setProducer(`Mocha Engine [Processed Operation: ${operation}]`); break;
+  
+  if (operation === 'compress' || operation === 'optimize') {
+    // تحديث الاستدعاء ليعتمد على المستند المصفى والمسحوق الحجم بالكامل
+    currentDoc = await executeCompressOperation(currentDoc, settings);
+  } else {
+    switch (operation) {
+      case 'organize': case 'organize_pages': currentDoc = await executePageOrganization(currentDoc, settings); break;
+      case 'merge': case 'merge_files': currentDoc = await executePdfMerge(currentDoc, googleDrive, settings); break;
+      default: currentDoc.setProducer(`Mocha Engine [Processed Operation: ${operation}]`); break;
+    }
   }
+
   let pdfBytes = await currentDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
-  const security = (currentDoc as any)._physicalSecurity;
-  if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
-    pdfBytes = await encryptPDF(pdfBytes, security.userPassword, { ownerPassword: security.ownerPassword, allowPrinting: security.allowPrinting, allowCopying: security.allowCopying, allowModifying: false });
-  }
   return Buffer.from(pdfBytes);
 }
 
@@ -139,7 +153,7 @@ export async function POST(req: NextRequest) {
         let targetFileId = fileId;
         if (!targetFileId) {
           const listRes = await googleDrive.files.list({ q: `'${folderId}' in parents and name contains 'MochaVault_Raw_' and trashed = false`, orderBy: 'createdTime desc', pageSize: 1 });
-          if (listRes.data.files && listRes.data.files.length > 0) { targetFileId = listRes.data.files[0].id; } // ✅ تم التصحيح الجذري هنا بإضافة [0] لتقرأ الملف بنجاح
+          if (listRes.data.files && listRes.data.files.length > 0) { targetFileId = listRes.data.files[0].id; }
         }
         if (!targetFileId) return NextResponse.json({ error: 'خطأ الأولوية: يجب إتمام رفع الملف الخام أولاً.' }, { status: 400 });
         const fileResponse = await googleDrive.files.get({ fileId: targetFileId, alt: 'media' }, { responseType: 'arraybuffer' });
