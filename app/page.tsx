@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import './globals.css';
 
 export default function UltimateLocalCompressor() {
@@ -20,13 +20,8 @@ export default function UltimateLocalCompressor() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // محرك فك بكسلات الصور محلياً وإعادتها JPEG مضغوط نقي
-  const processAndCompressImageLocal = (
-    imageBuffer: Uint8Array, 
-    scale: number, 
-    quality: number,
-    isGray: boolean
-  ): Promise<Uint8Array> => {
+  // محرك فك بكسلات الصور محلياً وإعادتها بصيغة JPEG متوافقة تماماً مع أدوبي
+  const processAndCompressImageLocal = (imageBuffer: Uint8Array, scale: number, quality: number, isGray: boolean): Promise<Uint8Array> => {
     return new Promise((resolve) => {
       if (!imageBuffer || imageBuffer.length === 0) { resolve(new Uint8Array()); return; }
       const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
@@ -55,6 +50,7 @@ export default function UltimateLocalCompressor() {
       img.src = url;
     });
   };
+  // الدالة الكبرى: تتجنب تماماً استخدام embedPages لتفادي انهيار محرك المتصفح
   const handlePdfProcessing = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -62,12 +58,14 @@ export default function UltimateLocalCompressor() {
     const file = fileList[0];
     setFileInfo({ name: file.name, size: formatBytes(file.size) });
     setIsProcessing(true);
-    setStatusMessage('جاري تحليل ملف الـ PDF محلياً وإنشاء بنية نظيفة 100% لأدوبي...');
+    setStatusMessage('جاري تهيئة بنية المستند ومعالجة الهيكل البرمجي القياسي...');
 
     try {
       const arrayBuffer = await file.arrayBuffer();
       const srcDoc = await PDFDocument.load(arrayBuffer);
-      const cleanDoc = await PDFDocument.create();
+      
+      // مستند جديد ونظيف ومحمي
+      const finalDoc = await PDFDocument.create();
 
       let scaleRatio = 0.60;
       let jpegQuality = 0.55;
@@ -76,41 +74,40 @@ export default function UltimateLocalCompressor() {
       else if (compressionLevel === 'low') { scaleRatio = 0.80; jpegQuality = 0.70; }
 
       const isGray = colorMode === 'grayscale';
-      const pages = srcDoc.getPages();
+      const totalPages = srcDoc.getPageCount();
 
-      for (let i = 0; i < pages.length; i++) {
-        setStatusMessage(`جاري معالجة وتصفية بكسلات محتويات الصفحة (${i + 1}) من أصل (${pages.length})...`);
-        const originalPage = pages[i];
-        const { width, height } = originalPage.getSize();
+      // الاستراتيجية البديلة والحاسمة: نسخ الصفحات بالكامل دفعة واحدة لمنع استدعاء السياق المكسور
+      const copiedPages = await finalDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      
+      for (let i = 0; i < copiedPages.length; i++) {
+        setStatusMessage(`جاري تصفية وتصغير بكسلات الصور في الصفحة (${i + 1}) من أصل (${totalPages})...`);
+        const targetPage = copiedPages[i];
         
-        const newPage = cleanDoc.addPage([width, height]);
-        const [embeddedPage] = await cleanDoc.embedPages([srcDoc], [i]);
-        newPage.drawPage(embeddedPage, { x: 0, y: 0, width, height });
-
-        // الفحص الآمن والحماية المطلقة لمنع خطأ الـ context و undefined
-        const resources = (originalPage as any).node?.Resources;
-        if (!resources) continue;
+        // الوصول الآمن والمباشر لكائنات الصور داخل موارد الصفحة دون المساس بالهيكل
+        const resources = (targetPage as any).node?.Resources;
+        const xObjects = resources?.get?.(PDFName.of('XObject'));
         
-        const xObjects = typeof resources.get === 'function' ? resources.get(Symbol.for('PDFName.XObject') as any || 'XObject') : null;
         if (xObjects && typeof xObjects.keys === 'function') {
           for (const key of xObjects.keys()) {
             const xObj = xObjects.get(key);
-            // التأكد التام من أن الكائن معرف ويحتوي على خصائص صحيحة وقابلة للقراءة
-            if (xObj && xObj.dict && typeof xObj.dict.get === 'function') {
-              const subtype = xObj.dict.get(Symbol.for('PDFName.Subtype') as any || 'Subtype');
-              if (subtype && subtype.toString() === '/Image' && xObj.contents) {
-                const compressedBytes = await processAndCompressImageLocal(xObj.contents, scaleRatio, jpegQuality, isGray);
-                if (compressedBytes && compressedBytes.length > 0) {
-                  await cleanDoc.embedJpeg(compressedBytes);
-                }
+            if (xObj instanceof PDFRawStream && xObj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+              const originalBytes = xObj.contents;
+              const compressedBytes = await processAndCompressImageLocal(originalBytes, scaleRatio, jpegQuality, isGray);
+              
+              if (compressedBytes && compressedBytes.length > 0) {
+                // استبدال بايتات الصورة الأصلية بالبايتات المضغوطة بشكل مباشر وآمن
+                xObj.contents = compressedBytes;
+                xObj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+                xObj.dict.set(PDFName.of('Length'), finalDoc.context.obj(compressedBytes.length));
               }
             }
           }
         }
+        finalDoc.addPage(targetPage);
       }
 
-      setStatusMessage('جاري حفظ الملف النهائي في جهازك فوراً...');
-      const compressedPdfBytes = await cleanDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
+      setStatusMessage('جاري صياغة ملف الـ PDF المتوافق كلياً مع أدوبي أكروبات...');
+      const compressedPdfBytes = await finalDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
 
       const downloadBlob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
       const downloadUrl = URL.createObjectURL(downloadBlob);
@@ -119,10 +116,10 @@ export default function UltimateLocalCompressor() {
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
 
       setIsProcessing(false);
-      setStatusMessage(`اكتمل الضغط المحلي بنجاح! الحجم الجديد: ${formatBytes(compressedPdfBytes.length)}`);
+      setStatusMessage(`اكتمل الضغط بنجاح تام! الحجم الجديد: ${formatBytes(compressedPdfBytes.length)}`);
     } catch (error) {
       console.error(error); setIsProcessing(false);
-      setStatusMessage('حدث خطأ أثناء معالجة هذا الملف المحدد، يرجى تجربة ملف آخر.');
+      setStatusMessage('حدث خطأ أثناء معالجة بنية المستند، تأكد من سلامة ملف الـ PDF الأصلي.');
     }
   };
 
@@ -131,30 +128,30 @@ export default function UltimateLocalCompressor() {
       <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-200/60">
         <div className="text-center mb-8">
           <div className="inline-block p-4 bg-indigo-50 rounded-full text-indigo-600 mb-3 text-3xl">🖨️</div>
-          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المحلي والآمن</h1>
-          <p className="text-sm text-gray-500 mt-1">المعالجة والتخزين داخل جهازك بالكامل - متاح للجميع مجاناً وبأعلى خصوصية</p>
+          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المطور</h1>
+          <p className="text-sm text-gray-500 mt-1">نسخ بنية آمن خالي تماماً من أخطاء السيرفر والمتصفح ومتاح مجاناً للجميع</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-2">مستوى تقليص الحجم:</label>
             <select value={compressionLevel} onChange={(e) => setCompressionLevel(e.target.value)} disabled={isProcessing} className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2.5">
-              <option value="low">تقليص منخفض (جودة عالية جداً)</option>
-              <option value="balanced">تقليص متوازن (موصى به للطباعة)</option>
-              <option value="extreme">تقليص أقصى (أصغر حجم ممكن)</option>
+              <option value="low">تقليص منخفض (جودة عالية)</option>
+              <option value="balanced">تقليص متوازن (موصى به)</option>
+              <option value="extreme">تقليص أقصى (أصغر حجم)</option>
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-2">نمط الألوان والأحبار:</label>
             <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} disabled={isProcessing} className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2.5">
               <option value="color">ألوان كاملة (Color RGB)</option>
-              <option value="grayscale">تدرج الرمادي (Grayscale لتوفير الحبر)</option>
+              <option value="grayscale">تدرج الرمادي (Grayscale)</option>
             </select>
           </div>
         </div>
 
         <div className="border-2 border-dashed border-gray-300 hover:border-indigo-500 rounded-xl p-8 text-center relative cursor-pointer bg-gray-50/50 group">
-          <input type="file" accept="application/pdf" onChange={handlePdfProcessing} disabled={isProcessing} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
+          <input type="file" accept="application/pdf" onChange={handlePdfProcessing} disabled={isProcessing} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
           <span className="text-4xl block mb-2 group-hover:scale-105 transition-transform">📄</span>
           <span className="block font-semibold text-gray-700 text-sm">اضغط هنا لاختيار ملف الـ PDF والبدء فوراً</span>
         </div>
