@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import { PDFDocument } from 'pdf-lib';
 import './globals.css';
 
-export default function ServerPdfCompressor() {
+export default function UltimateLocalCompressor() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [fileInfo, setFileInfo] = useState<{ name: string; size: string } | null>(null);
+  
   const [compressionLevel, setCompressionLevel] = useState<string>('balanced');
   const [colorMode, setColorMode] = useState<string>('color');
 
@@ -18,6 +20,40 @@ export default function ServerPdfCompressor() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // محرك فك بكسلات الصور محلياً وإعادتها JPEG مضغوط نقي
+  const processAndCompressImageLocal = (
+    imageBuffer: Uint8Array, 
+    scale: number, 
+    quality: number,
+    isGray: boolean
+  ): Promise<Uint8Array> => {
+    return new Promise((resolve) => {
+      const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          if (isGray) {
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+              const v = 0.3 * imgData.data[i] + 0.59 * imgData.data[i+1] + 0.11 * imgData.data[i+2];
+              imgData.data[i] = v; imgData.data[i+1] = v; imgData.data[i+2] = v;
+            }
+            ctx.putImageData(imgData, 0, 0);
+          }
+          canvas.toBlob((b) => b ? b.arrayBuffer().then(buf => resolve(new Uint8Array(buf))) : resolve(imageBuffer), 'image/jpeg', quality);
+        } else { resolve(imageBuffer); }
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => { resolve(imageBuffer); URL.revokeObjectURL(url); };
+      img.src = url;
+    });
+  };
   const handlePdfProcessing = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -25,37 +61,60 @@ export default function ServerPdfCompressor() {
     const file = fileList[0];
     setFileInfo({ name: file.name, size: formatBytes(file.size) });
     setIsProcessing(true);
-    setStatusMessage('جاري رفع الملف ومعالجته عبر المحرك القياسي بالسيرفر...');
+    setStatusMessage('جاري تحليل ملف الـ PDF محلياً وإنشاء بنية نظيفة 100% لأدوبي...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('compressionLevel', compressionLevel);
-      formData.append('colorMode', colorMode);
+      const arrayBuffer = await file.arrayBuffer();
+      const srcDoc = await PDFDocument.load(arrayBuffer);
+      const cleanDoc = await PDFDocument.create(); // مستند بكر وجديد لتفادي التلف
 
-      // إرسال الملف إلى الـ API الداخلي المطور بـ Sharp
-      const response = await fetch('/api/process-pdf', {
-        method: 'POST',
-        body: formData,
-      });
+      let scaleRatio = 0.60;
+      let jpegQuality = 0.55;
 
-      if (!response.ok) throw new Error('فشلت عملية الضغط في السيرفر');
+      if (compressionLevel === 'extreme') { scaleRatio = 0.35; jpegQuality = 0.40; }
+      else if (compressionLevel === 'low') { scaleRatio = 0.80; jpegQuality = 0.70; }
 
-      const blob = await response.blob();
-      const downloadUrl = URL.createObjectURL(blob);
+      const isGray = colorMode === 'grayscale';
+      const pages = srcDoc.getPages();
+
+      // رسم الصفحات القديمة داخل الصفحات الجديدة بشكل نظيف ومحمي
+      for (let i = 0; i < pages.length; i++) {
+        setStatusMessage(`جاري معالجة وتصفية بكسلات محتويات الصفحة (${i + 1}) من أصل (${pages.length})...`);
+        const originalPage = pages[i];
+        const { width, height } = originalPage.getSize();
+        
+        const newPage = cleanDoc.addPage([width, height]);
+        const [embeddedPage] = await cleanDoc.embedPages([srcDoc], [i]);
+        newPage.drawPage(embeddedPage, { x: 0, y: 0, width, height });
+
+        // استخراج وضغط الصور المضمنة برمجياً عبر الـ Canvas بشكل مستقل
+        const resources = (originalPage as any).node.Resources;
+        const xObjects = resources?.get?.(PDFName.of('XObject'));
+        if (xObjects) {
+          for (const key of xObjects.keys()) {
+            const xObj = xObjects.get(key);
+            if (xObj instanceof PDFRawStream && xObj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+              const compressedBytes = await processAndCompressImageLocal(xObj.contents, scaleRatio, jpegQuality, isGray);
+              await cleanDoc.embedJpeg(compressedBytes); // الحقن الرسمي الآمن لأدوبي
+            }
+          }
+        }
+      }
+
+      setStatusMessage('جاري حفظ الملف النهائي في جهازك فوراً...');
+      const compressedPdfBytes = await cleanDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
+
+      const downloadBlob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
+      const downloadUrl = URL.createObjectURL(downloadBlob);
       const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `compressed_${file.name}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      link.href = downloadUrl; link.download = `compressed_${file.name}`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
 
       setIsProcessing(false);
-      setStatusMessage(`اكتملت العملية بنجاح! الحجم الجديد: ${formatBytes(blob.size)}`);
+      setStatusMessage(`اكتمل الضغط المحلي بنجاح! الحجم الجديد: ${formatBytes(compressedPdfBytes.length)}`);
     } catch (error) {
-      console.error(error);
-      setIsProcessing(false);
-      setStatusMessage('حدث خطأ أثناء المعالجة، يرجى التأكد من سلامة ملف الـ PDF الأصلي.');
+      console.error(error); setIsProcessing(false);
+      setStatusMessage('حدث خطأ، يرجى التأكد من سلامة ملف الـ PDF الأصلي.');
     }
   };
 
@@ -64,8 +123,8 @@ export default function ServerPdfCompressor() {
       <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-200/60">
         <div className="text-center mb-8">
           <div className="inline-block p-4 bg-indigo-50 rounded-full text-indigo-600 mb-3 text-3xl">🖨️</div>
-          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المعتمد</h1>
-          <p className="text-sm text-gray-500 mt-1">معالجة رسومية احترافية متوافقة بالكامل مع برامج أدوبي أكروبات</p>
+          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المحلي والآمن</h1>
+          <p className="text-sm text-gray-500 mt-1">المعالجة والتخزين داخل جهازك بالكامل - متاح للجميع مجاناً وبأعلى خصوصية</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
