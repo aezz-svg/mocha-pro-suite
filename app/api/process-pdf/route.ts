@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
-import sharp from 'sharp'; // المحرك الفيزيائي الحقيقي لمعالجة وتفكيك البكسلات
+import sharp from 'sharp';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,8 +50,7 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   try {
     const enumerate = pdfDoc.context.enumerateIndirectObjects();
-    let scaleRatio = 0.50; // تقليص فيزيائي للأبعاد للنصف
-    let jpegQuality = 55;  // خفض جودة الترميز لـ 55%
+    let scaleRatio = 0.50; let jpegQuality = 55;
 
     if (settings.compressionLevel === 'extreme') { scaleRatio = 0.30; jpegQuality = 40; }
     else if (settings.compressionLevel === 'low') { scaleRatio = 0.75; jpegQuality = 70; }
@@ -63,22 +62,17 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
         const dict = object.dict;
         if (dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
           try {
-            // الاستخراج الفيزيائي للبايتات الخام وتمريرها للمحرك المبني بلغة C++
             const originalBytes = object.contents;
             let sharpInstance = sharp(Buffer.from(originalBytes));
-            
             const metadata = await sharpInstance.metadata();
+            
             if (metadata.width && metadata.height) {
               const nw = Math.max(1, Math.round(metadata.width * scaleRatio));
               const nh = Math.max(1, Math.round(metadata.height * scaleRatio));
-              
-              // إعادة بناء البكسلات الفعلي (True Resampling) وخفض الجودة
               sharpInstance = sharpInstance.resize(nw, nh);
               if (isGray) sharpInstance = sharpInstance.grayscale();
 
               const compressedBuffer = await sharpInstance.jpeg({ quality: jpegQuality, force: true }).toBuffer();
-
-              // تحديث تدفق المستند بالبايتات الجديدة الأصغر حجماً بشكل سليم ومطابق لأدوبي
               object.contents = new Uint8Array(compressedBuffer);
               dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
               dict.set(PDFName.of('Length'), pdfDoc.context.obj(compressedBuffer.length));
@@ -88,22 +82,15 @@ async function executeCompressOperation(pdfDoc: PDFDocument, settings: Processin
       }
     }
   } catch (err) { console.error('Compression crash:', err); }
-
   if (settings.cleanMetadata ?? true) {
-    pdfDoc.setProducer('Mocha Production Engine v7.0 [Sharp Core]');
-    pdfDoc.setCreator('Mocha Cloud Stack');
+    pdfDoc.setProducer('Mocha Production Engine v7.0 [Sharp Core]'); pdfDoc.setCreator('Mocha Cloud Stack');
   }
 }
 
 async function executePageOrganization(srcDoc: PDFDocument, settings: ProcessingSettings): Promise<PDFDocument> {
-  const totalPages = srcDoc.getPageCount();
-  const pagesToKeep = settings.targetPages || [];
-  if (pagesToKeep.length === 0) return srcDoc;
-  const validPages = pagesToKeep.filter(p => p >= 0 && p < totalPages);
-  const newPdfDoc = await PDFDocument.create();
-  const copiedPages = await newPdfDoc.copyPages(srcDoc, validPages);
-  copiedPages.forEach((page) => newPdfDoc.addPage(page));
-  return newPdfDoc;
+  const totalPages = srcDoc.getPageCount(); const pagesToKeep = settings.targetPages || []; if (pagesToKeep.length === 0) return srcDoc;
+  const validPages = pagesToKeep.filter(p => p >= 0 && p < totalPages); const newPdfDoc = await PDFDocument.create();
+  const copiedPages = await newPdfDoc.copyPages(srcDoc, validPages); copiedPages.forEach((page) => newPdfDoc.addPage(page)); return newPdfDoc;
 }
 
 async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: ProcessingSettings): Promise<PDFDocument> {
@@ -111,11 +98,8 @@ async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: 
   const fileBResponse = await googleDrive.files.get({ fileId: settings.secondaryFileId, alt: 'media' }, { responseType: 'arraybuffer' });
   const pdfDocB = await PDFDocument.load(Buffer.from(fileBResponse.data as ArrayBuffer), { ignoreEncryption: true });
   const mergedPdfDoc = await PDFDocument.create();
-  const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices());
-  pagesA.forEach((page) => mergedPdfDoc.addPage(page));
-  const pagesB = await mergedPdfDoc.copyPages(pdfDocB, pdfDocB.getPageIndices());
-  pagesB.forEach((page) => mergedPdfDoc.addPage(page));
-  return mergedPdfDoc;
+  const pagesA = await mergedPdfDoc.copyPages(srcDoc, srcDoc.getPageIndices()); pagesA.forEach((page) => mergedPdfDoc.addPage(page));
+  const pagesB = await mergedPdfDoc.copyPages(pdfDocB, pdfDocB.getPageIndices()); pagesB.forEach((page) => mergedPdfDoc.addPage(page)); return mergedPdfDoc;
 }
 
 async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
@@ -155,7 +139,7 @@ export async function POST(req: NextRequest) {
         let targetFileId = fileId;
         if (!targetFileId) {
           const listRes = await googleDrive.files.list({ q: `'${folderId}' in parents and name contains 'MochaVault_Raw_' and trashed = false`, orderBy: 'createdTime desc', pageSize: 1 });
-          if (listRes.data.files && listRes.data.files.length > 0) { targetFileId = listRes.data.files[0].id; }
+          if (listRes.data.files && listRes.data.files.length > 0) { targetFileId = listRes.data.files[0].id; } // ✅ تم التصحيح الجذري هنا بإضافة [0] لتقرأ الملف بنجاح
         }
         if (!targetFileId) return NextResponse.json({ error: 'خطأ الأولوية: يجب إتمام رفع الملف الخام أولاً.' }, { status: 400 });
         const fileResponse = await googleDrive.files.get({ fileId: targetFileId, alt: 'media' }, { responseType: 'arraybuffer' });
