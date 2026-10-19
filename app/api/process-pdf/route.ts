@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
-// استدعاء المحرك البرمجي الخارجي المدمج محلياً
-import { executeExternalEngineCompress } from './local-pdf-optimizer';
+import sharp from 'sharp'; // تفعيل المحرك الرسومي العالمي في الخلفية
 
 export const dynamic = 'force-dynamic';
 
@@ -58,13 +57,57 @@ async function enforceVaultStorageLimit(drive: any, folderId: string) {
     console.error('Vault cleanup warning:', err);
   }
 }
-
 async function executeCompressOperation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
-  // تشغيل المحرك المدمج وتغذيتة بالمتغيرات الممررة من لوحة المستخدم
-  await executeExternalEngineCompress(pdfDoc, settings);
-  
+  try {
+    const enumerate = pdfDoc.context.enumerateIndirectObjects();
+    
+    // ضبط المعاملات الفيزيائية بناءً على مدخلات لوحة المستخدم
+    let scaleRatio = 0.65;
+    let jpegQuality = 60;
+
+    if (settings.compressionLevel === 'extreme') { scaleRatio = 0.45; jpegQuality = 45; }
+    else if (settings.compressionLevel === 'low') { scaleRatio = 0.85; jpegQuality = 75; }
+
+    if (settings.dpi && settings.dpi <= 72) scaleRatio = Math.min(scaleRatio, 0.45);
+    if (settings.dpi && settings.dpi >= 300) scaleRatio = Math.min(scaleRatio, 0.90);
+
+    const isGray = settings.colorMode === 'grayscale' || settings.colorMode === 'mono';
+
+    // التعديل الجذري: تشغيل sharp لتقليص حجم البكسلات الخام دون إتلاف الملف
+    for (const [ref, object] of enumerate) {
+      if (object instanceof PDFRawStream) {
+        const dict = object.dict;
+        if (dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+          try {
+            const originalBytes = object.contents;
+            let sharpInstance = sharp(Buffer.from(originalBytes));
+            
+            const metadata = await sharpInstance.metadata();
+            if (metadata.width && metadata.height) {
+              const nw = Math.max(1, Math.round(metadata.width * scaleRatio));
+              const nh = Math.max(1, Math.round(metadata.height * scaleRatio));
+              
+              sharpInstance = sharpInstance.resize(nw, nh);
+              if (isGray) sharpInstance = sharpInstance.grayscale();
+
+              const compressedBuffer = await sharpInstance.jpeg({ quality: jpegQuality, force: true }).toBuffer();
+
+              object.contents = new Uint8Array(compressedBuffer);
+              dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+              dict.set(PDFName.of('Length'), pdfDoc.context.obj(compressedBuffer.length));
+            }
+          } catch (imgErr) {
+            continue; // تخطي أي هيكل غير متوافق دون تعطيل بقية المستند
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('محرك الضغط الرسومي واجه مشكلة:', err);
+  }
+
   if (settings.cleanMetadata ?? true) {
-    pdfDoc.setProducer('Mocha Production Engine v7.0 [Local Injected]');
+    pdfDoc.setProducer('Mocha Production Engine v7.0 [Sharp Integrated]');
     pdfDoc.setCreator('Mocha Cloud Stack');
   }
 }
@@ -112,7 +155,6 @@ async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSetti
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   pdfDoc.setProducer(`Mocha Advanced Engine [Strict Compliant With ${settings.pdfaCompliance || 'PDF/A-2b'}]`);
 }
-
 async function processPdfBuffer(
   buffer: Buffer, 
   operation: string, 
@@ -153,14 +195,12 @@ async function processPdfBuffer(
       break;
   }
 
-  // حفظ المستند أولاً بشكل منفصل، ثم فحص الصلاحيات
   let pdfBytes = await currentDoc.save({
-    useObjectStreams: false,        // تفعيل التوافق الكامل مع كافة الطابعات
+    useObjectStreams: false, // الهيكلية التقليدية لضمان عمل الطابعات وأدوبي
     addMissingPageBytestream: true
   });
 
   const security = (currentDoc as any)._physicalSecurity;
-
   if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
     pdfBytes = await encryptPDF(pdfBytes, security.userPassword, {
       ownerPassword: security.ownerPassword,
@@ -172,6 +212,7 @@ async function processPdfBuffer(
 
   return Buffer.from(pdfBytes);
 }
+
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
@@ -214,7 +255,6 @@ export async function POST(req: NextRequest) {
           throw new Error('الملف الخام في الخزنة فارغ (0 بايت).');
         }
 
-        // تمرير الـ settings المدخلة من الواجهة لتفعيل التحكم الفيزيائي الحركي بالكامل
         const processedBuffer = await processPdfBuffer(rawBuffer, operation, googleDrive, settings || {});
         if (processedBuffer.length === 0) {
           throw new Error('فشل توليد بايتات الملف المعالج.');
@@ -223,32 +263,22 @@ export async function POST(req: NextRequest) {
         const originalName = sourceFileMeta.data.name?.replace(/^MochaVault_Raw_\d+_/, '') || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        // 📏 حساب الحجم المتقلص بالبايت بدقة
         const finalBuffer = Buffer.from(processedBuffer);
         const finalFileSize = finalBuffer.length;
 
         const createRes = await googleDrive.files.create({
-          requestBody: {
-            name: processedFileName,
-            parents: [folderId],
-          },
-          media: {
-            mimeType: 'application/pdf',
-            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط
-          },
+          requestBody: { name: processedFileName, parents: [folderId] },
+          media: { mimeType: 'application/pdf', body: Readable.from(finalBuffer) },
           fields: 'id, name, webContentLink, webViewLink, size',
         });
 
         const newFileId = createRes.data.id;
-
         try {
           await googleDrive.permissions.create({
             fileId: newFileId,
             requestBody: { role: 'reader', type: 'anyone' },
           });
-        } catch (permErr) {
-          console.warn('Permission warning:', permErr);
-        }
+        } catch (permErr) { console.warn('Permission warning:', permErr); }
 
         const finalMeta = await googleDrive.files.get({
           fileId: newFileId,
@@ -259,17 +289,15 @@ export async function POST(req: NextRequest) {
           success: true,
           kind: 'file',
           filename: finalMeta.data.name,
-          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة لمنع التضارب
           size: finalFileSize,
           actualSize: finalFileSize,
           message: 'تمت المعالجة الفيزيائية الموجهة وحفظ الملف في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
-      } // إغلاق شرط process_operation
-    } // إغلاق شرط application/json
+      }
+    }
 
-    // 📦 معالجة رفع أجزاء الملف (Chunks) تلقائياً بشكل معزول وسليم
     const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
     const filename = formData.get('filename') as string;
@@ -290,28 +318,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'بيانات أجزاء الملف مفقودة.' }, { status: 400 });
     }
 
-    const existingFile = await googleDrive.files.get({
-      fileId: fileId,
-      alt: 'media',
-    }, { responseType: 'arraybuffer' });
-
+    const existingFile = await googleDrive.files.get({ fileId: fileId, alt: 'media' }, { responseType: 'arraybuffer' });
     const existingBuffer = Buffer.from(existingFile.data as ArrayBuffer);
     const newChunkBuffer = Buffer.from(await chunk.arrayBuffer());
     const combinedBuffer = Buffer.concat([existingBuffer, newChunkBuffer]);
 
     await googleDrive.files.update({
       fileId: fileId,
-      media: {
-        mimeType: 'application/pdf',
-        body: Readable.from(combinedBuffer),
-      },
+      media: { mimeType: 'application/pdf', body: Readable.from(combinedBuffer) },
     });
 
-    const fileMeta = await googleDrive.files.get({
-      fileId: fileId,
-      fields: 'id, name, webContentLink, webViewLink, size',
-    });
-
+    const fileMeta = await googleDrive.files.get({ fileId: fileId, fields: 'id, name, webContentLink, webViewLink, size' });
     const currentChunkSize = combinedBuffer.length;
 
     return NextResponse.json({
@@ -328,9 +345,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * دالة جلب قائمة آخر الملفات المرفوعة من سحابة جوجل درايف
- */
 export async function GET() {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
