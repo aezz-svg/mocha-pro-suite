@@ -152,8 +152,11 @@ async function processPdfBuffer(
       break;
   }
 
- let pdfBytes = await currentDoc.save({
+  // حفظ المستند أولاً بشكل منفصل، ثم فحص الصلاحيات
+  let pdfBytes = await currentDoc.save();
+
   const security = (currentDoc as any)._physicalSecurity;
+
   if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
     pdfBytes = await encryptPDF(pdfBytes, security.userPassword, {
       ownerPassword: security.ownerPassword,
@@ -162,6 +165,7 @@ async function processPdfBuffer(
       allowModifying: false
     });
   }
+
 
   return Buffer.from(pdfBytes);
 }
