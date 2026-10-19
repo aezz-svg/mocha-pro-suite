@@ -95,7 +95,7 @@ async function executePdfMerge(srcDoc: PDFDocument, googleDrive: any, settings: 
 async function executePdfAnnotation(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   const pages = pdfDoc.getPages();
   if (pages.length === 0) return;
-  const firstPage = pages;
+  const firstPage = pages[0];
   const { height } = firstPage.getSize();
   firstPage.drawText(`[${settings.reviewerName || 'System'}]: ${settings.reviewText || 'Verified'}`, { x: 40, y: height - 40, size: 12 });
 }
@@ -112,6 +112,7 @@ async function executePdfSecurity(pdfDoc: PDFDocument, settings: ProcessingSetti
 async function executePdfACompliance(pdfDoc: PDFDocument, settings: ProcessingSettings): Promise<void> {
   pdfDoc.setProducer(`Mocha Advanced Engine [Strict Compliant With ${settings.pdfaCompliance || 'PDF/A-2b'}]`);
 }
+
 async function processPdfBuffer(
   buffer: Buffer, 
   operation: string, 
@@ -153,7 +154,10 @@ async function processPdfBuffer(
   }
 
   // حفظ المستند أولاً بشكل منفصل، ثم فحص الصلاحيات
-  let pdfBytes = await currentDoc.save();
+  let pdfBytes = await currentDoc.save({
+    useObjectStreams: false,        // تفعيل التوافق الكامل مع كافة الطابعات
+    addMissingPageBytestream: true
+  });
 
   const security = (currentDoc as any)._physicalSecurity;
 
@@ -165,7 +169,6 @@ async function processPdfBuffer(
       allowModifying: false
     });
   }
-
 
   return Buffer.from(pdfBytes);
 }
@@ -220,7 +223,7 @@ export async function POST(req: NextRequest) {
         const originalName = sourceFileMeta.data.name?.replace(/^MochaVault_Raw_\d+_/, '') || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        // 📏 تحويل بايتات المعالجة الحقيقية والنهائية إلى Buffer لحساب الحجم المتقلص بالبايت بدقة
+        // 📏 حساب الحجم المتقلص بالبايت بدقة
         const finalBuffer = Buffer.from(processedBuffer);
         const finalFileSize = finalBuffer.length;
 
@@ -231,7 +234,7 @@ export async function POST(req: NextRequest) {
           },
           media: {
             mimeType: 'application/pdf',
-            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط الخالي من الخلفيات السوداء
+            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط
           },
           fields: 'id, name, webContentLink, webViewLink, size',
         });
@@ -256,17 +259,17 @@ export async function POST(req: NextRequest) {
           success: true,
           kind: 'file',
           filename: finalMeta.data.name,
-          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة دون تضارب مع خوادم جوجل
+          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة لمنع التضارب
           size: finalFileSize,
           actualSize: finalFileSize,
           message: 'تمت المعالجة الفيزيائية الموجهة وحفظ الملف في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
-      } // 👈 إغلاق شرط process_operation بشكل صحيح
-    } // 👈 إغلاق شرط application/json بشكل صحيح
+      } // إغلاق شرط process_operation
+    } // إغلاق شرط application/json
 
-    // 📦 هنا يبدأ جزء الـ Multipart Form Data لمعالجة رفع أجزاء الملف (Chunks) تلقائياً بشكل معزول وسليم
+    // 📦 معالجة رفع أجزاء الملف (Chunks) تلقائياً بشكل معزول وسليم
     const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
     const filename = formData.get('filename') as string;
@@ -309,7 +312,6 @@ export async function POST(req: NextRequest) {
       fields: 'id, name, webContentLink, webViewLink, size',
     });
 
-    // جلب حجم أجزاء الملف المجمعة حالياً من الـ Buffer المدمج مباشرة لمنع التضارب
     const currentChunkSize = combinedBuffer.length;
 
     return NextResponse.json({
@@ -323,5 +325,23 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Pipeline API Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الموجه فنيًا' }, { status: 500 });
+  }
+}
+
+/**
+ * دالة جلب قائمة آخر الملفات المرفوعة من سحابة جوجل درايف
+ */
+export async function GET() {
+  try {
+    const { folderId, googleDrive } = getGoogleDriveClient();
+    const res = await googleDrive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      orderBy: 'createdTime desc',
+      pageSize: 4,
+      fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
+    });
+    return NextResponse.json({ success: true, files: res.data.files || [] });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
