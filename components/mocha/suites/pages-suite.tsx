@@ -252,7 +252,7 @@ export function PagesSuite() {
             ref={mergeInputRef} 
             className="hidden" 
             onChange={(e) => {
-              const f = e.target.files?.[0]
+             const file = e.target.files?.[0];
               if (f) setMergeFiles(prev => [...prev, f])
             }} 
           />
