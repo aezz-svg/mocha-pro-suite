@@ -20,13 +20,23 @@ export default function UltimateLocalCompressor() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // محرك فك بكسلات الصور محلياً وإعادتها بصيغة JPEG متوافقة تماماً مع أدوبي
-  const processAndCompressImageLocal = (imageBuffer: Uint8Array, scale: number, quality: number, isGray: boolean): Promise<Uint8Array> => {
+  // 🖨️ المحرك المطور: يدعم تحويل وفك بايتات الـ PNG والـ Bitmaps إلى JPEG أوتوماتيكياً محلياً
+  const processAndCompressImageLocal = (
+    imageBuffer: Uint8Array, 
+    scale: number, 
+    quality: number,
+    isGray: boolean,
+    filterType: string
+  ): Promise<Uint8Array> => {
     return new Promise((resolve) => {
       if (!imageBuffer || imageBuffer.length === 0) { resolve(new Uint8Array()); return; }
-      const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
+      
+      // تحديد المايم تايب برمجياً (إذا كان مضغوط فلات نعتبره بايتات خام كـ PNG)
+      const mimeType = filterType.includes('FlateDecode') ? 'image/png' : 'image/jpeg';
+      const blob = new Blob([imageBuffer], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const img = new Image();
+      
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -42,6 +52,7 @@ export default function UltimateLocalCompressor() {
             }
             ctx.putImageData(imgData, 0, 0);
           }
+          // 🚀 إجبار المتصفح على تصدير كافة الصور بصيغة JPEG لتقليص مساحتها بمقدار الضعف
           canvas.toBlob((b) => b ? b.arrayBuffer().then(buf => resolve(new Uint8Array(buf))) : resolve(imageBuffer), 'image/jpeg', quality);
         } else { resolve(imageBuffer); }
         URL.revokeObjectURL(url);
@@ -50,7 +61,6 @@ export default function UltimateLocalCompressor() {
       img.src = url;
     });
   };
-  // الدالة الكبرى: تتجنب تماماً استخدام embedPages لتفادي انهيار محرك المتصفح
   const handlePdfProcessing = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -63,27 +73,23 @@ export default function UltimateLocalCompressor() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const srcDoc = await PDFDocument.load(arrayBuffer);
-      
-      // مستند جديد ونظيف ومحمي
       const finalDoc = await PDFDocument.create();
 
-      let scaleRatio = 0.60;
-      let jpegQuality = 0.55;
+      // إعدادات نسب الضغط الفيزيائية المحسنة لتقليص المساحة بقوة
+      let scaleRatio = 0.50; 
+      let jpegQuality = 0.50; 
 
-      if (compressionLevel === 'extreme') { scaleRatio = 0.35; jpegQuality = 0.40; }
-      else if (compressionLevel === 'low') { scaleRatio = 0.80; jpegQuality = 0.70; }
+      if (compressionLevel === 'extreme') { scaleRatio = 0.30; jpegQuality = 0.35; }
+      else if (compressionLevel === 'low') { scaleRatio = 0.75; jpegQuality = 0.65; }
 
       const isGray = colorMode === 'grayscale';
       const totalPages = srcDoc.getPageCount();
-
-      // الاستراتيجية البديلة والحاسمة: نسخ الصفحات بالكامل دفعة واحدة لمنع استدعاء السياق المكسور
       const copiedPages = await finalDoc.copyPages(srcDoc, srcDoc.getPageIndices());
       
       for (let i = 0; i < copiedPages.length; i++) {
-        setStatusMessage(`جاري تصفية وتصغير بكسلات الصور في الصفحة (${i + 1}) من أصل (${totalPages})...`);
+        setStatusMessage(`جاري تصفية وكسر بكسلات الصور في الصفحة (${i + 1}) من أصل (${totalPages})...`);
         const targetPage = copiedPages[i];
         
-        // الوصول الآمن والمباشر لكائنات الصور داخل موارد الصفحة دون المساس بالهيكل
         const resources = (targetPage as any).node?.Resources;
         const xObjects = resources?.get?.(PDFName.of('XObject'));
         
@@ -92,11 +98,14 @@ export default function UltimateLocalCompressor() {
             const xObj = xObjects.get(key);
             if (xObj instanceof PDFRawStream && xObj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
               const originalBytes = xObj.contents;
-              const compressedBytes = await processAndCompressImageLocal(originalBytes, scaleRatio, jpegQuality, isGray);
+              const filterType = xObj.dict.get(PDFName.of('Filter'))?.toString() || '';
+              
+              // استدعاء محرك المعالجة الشامل لـ جميع الفلاتر (JPEG & FlateDecode/PNG)
+              const compressedBytes = await processAndCompressImageLocal(originalBytes, scaleRatio, jpegQuality, isGray, filterType);
               
               if (compressedBytes && compressedBytes.length > 0) {
-                // استبدال بايتات الصورة الأصلية بالبايتات المضغوطة بشكل مباشر وآمن
                 xObj.contents = compressedBytes;
+                // 🔐 إجبار الهيكل على قراءة ترميز الصور الجديد كـ JPEG قياسي متوافق مع طابعات أدوبي
                 xObj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
                 xObj.dict.set(PDFName.of('Length'), finalDoc.context.obj(compressedBytes.length));
               }
@@ -128,8 +137,8 @@ export default function UltimateLocalCompressor() {
       <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-200/60">
         <div className="text-center mb-8">
           <div className="inline-block p-4 bg-indigo-50 rounded-full text-indigo-600 mb-3 text-3xl">🖨️</div>
-          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المطور</h1>
-          <p className="text-sm text-gray-500 mt-1">نسخ بنية آمن خالي تماماً من أخطاء السيرفر والمتصفح ومتاح مجاناً للجميع</p>
+          <h1 className="text-2xl font-bold text-gray-800">مُعالج وضغاط الـ PDF المطور كلياً</h1>
+          <p className="text-sm text-gray-500 mt-1">نسخ بنية آمن وضغط معزز وشامل لجميع أنواع الصور محلياً وبأعلى خصوصية</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -137,15 +146,15 @@ export default function UltimateLocalCompressor() {
             <label className="block text-xs font-semibold text-gray-600 mb-2">مستوى تقليص الحجم:</label>
             <select value={compressionLevel} onChange={(e) => setCompressionLevel(e.target.value)} disabled={isProcessing} className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2.5">
               <option value="low">تقليص منخفض (جودة عالية)</option>
-              <option value="balanced">تقليص متوازن (موصى به)</option>
-              <option value="extreme">تقليص أقصى (أصغر حجم)</option>
+              <option value="balanced">تقليص متوازن (موصى به للطباعة)</option>
+              <option value="extreme">تقليص أقصى (أصغر حجم ممكن الفعلي)</option>
             </select>
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-2">نمط الألوان والأحبار:</label>
             <select value={colorMode} onChange={(e) => setColorMode(e.target.value)} disabled={isProcessing} className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2.5">
               <option value="color">ألوان كاملة (Color RGB)</option>
-              <option value="grayscale">تدرج الرمادي (Grayscale)</option>
+              <option value="grayscale">تدرج الرمادي (Grayscale لتوفير الحبر)</option>
             </select>
           </div>
         </div>
