@@ -152,13 +152,7 @@ async function processPdfBuffer(
       break;
   }
 
-  // استخدام تقنية ضغط تدفق كائنات الجداول البرمجية لتقليص الحجم الإضافي المتبقي في ترويسة الملف
-  let pdfBytes = await currentDoc.save({
-    useObjectStreams: true,         
-    addMissingPageBytestream: true, 
-    objectsPerStream: 80,          
-  });
-
+ let pdfBytes = await currentDoc.save({
   const security = (currentDoc as any)._physicalSecurity;
   if (security && (security.userPassword || !security.allowPrinting || !security.allowCopying)) {
     pdfBytes = await encryptPDF(pdfBytes, security.userPassword, {
