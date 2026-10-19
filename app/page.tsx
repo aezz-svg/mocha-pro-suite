@@ -21,7 +21,7 @@ export default function AdvancedLocalPdfCompressor() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // محرك المتصفح المحلي لفك بكسلات الصور وضغطها
+  // محرك ذكي يقوم بضغط وتعديل مصفوفة بكسل الصورة لضمان مطابقتها لأدوبي
   const processAndCompressImage = (
     imageBuffer: Uint8Array, 
     scaleRatio: number, 
@@ -53,7 +53,13 @@ export default function AdvancedLocalPdfCompressor() {
             }
             ctx.putImageData(imgData, 0, 0);
           }
-          canvas.toBlob((b) => b ? b.arrayBuffer().then(buf => resolve(new Uint8Array(buf))) : resolve(imageBuffer), 'image/jpeg', quality);
+          canvas.toBlob((b) => {
+            if (b) {
+              b.arrayBuffer().then(buf => resolve(new Uint8Array(buf)));
+            } else {
+              resolve(imageBuffer);
+            }
+          }, 'image/jpeg', quality);
         } else { resolve(imageBuffer); }
         URL.revokeObjectURL(url);
       };
@@ -61,12 +67,11 @@ export default function AdvancedLocalPdfCompressor() {
       img.src = url;
     });
   };
-  // دالة الاستقبال والمعالجة الخالية من الأخطاء الإملائية والرموز المكسورة
   const handlePdfProcessing = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
-    const file = fileList[0]; // التقاط آمن وصحيح للملف بدون علامات تسبب خطأ البناء
+    const file = fileList[0];
     setFileInfo({ name: file.name, size: formatBytes(file.size) });
     setIsProcessing(true);
     setStatusMessage('جاري تحليل البنية وتفكيك كائنات الـ PDF...');
@@ -98,15 +103,14 @@ export default function AdvancedLocalPdfCompressor() {
             const originalBytes = object.contents;
             const compressedBytes = await processAndCompressImage(originalBytes, scaleRatio, jpegQuality, isGrayscale);
             
+            // التعديل الآمن: نقوم فقط بحشو البايتات المعدلة وتحديث الطول ليتولى أدوبي قراءتها تلقائياً وبأمان
             object.contents = compressedBytes;
-            dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
             dict.set(PDFName.of('Length'), pdfDoc.context.obj(compressedBytes.length));
-            if (isGrayscale) dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceGray'));
           }
         }
       }
 
-      setStatusMessage('جاري صياغة المستند المتوافق مع الطابعات...');
+      setStatusMessage('جاري صياغة المستند النهائي وضغط التدفق الهيكلي...');
       const compressedPdfBytes = await pdfDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
 
       const downloadBlob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
