@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, PDFDict } from 'pdf-lib';
 import './globals.css';
 
 export default function UltimateLocalCompressor() {
@@ -20,23 +20,18 @@ export default function UltimateLocalCompressor() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // 🖨️ المحرك المطور: يدعم تحويل وفك بايتات الـ PNG والـ Bitmaps إلى JPEG أوتوماتيكياً محلياً
+  // محرك فك البكسلات وإجبار المتصفح على تصدير الصور بصيغة JPEG القياسية المتقلصة
   const processAndCompressImageLocal = (
     imageBuffer: Uint8Array, 
     scale: number, 
     quality: number,
-    isGray: boolean,
-    filterType: string
+    isGray: boolean
   ): Promise<Uint8Array> => {
     return new Promise((resolve) => {
       if (!imageBuffer || imageBuffer.length === 0) { resolve(new Uint8Array()); return; }
-      
-      // تحديد المايم تايب برمجياً (إذا كان مضغوط فلات نعتبره بايتات خام كـ PNG)
-      const mimeType = filterType.includes('FlateDecode') ? 'image/png' : 'image/jpeg';
-      const blob = new Blob([imageBuffer], { type: mimeType });
+      const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
       const url = URL.createObjectURL(blob);
       const img = new Image();
-      
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -52,7 +47,6 @@ export default function UltimateLocalCompressor() {
             }
             ctx.putImageData(imgData, 0, 0);
           }
-          // 🚀 إجبار المتصفح على تصدير كافة الصور بصيغة JPEG لتقليص مساحتها بمقدار الضعف
           canvas.toBlob((b) => b ? b.arrayBuffer().then(buf => resolve(new Uint8Array(buf))) : resolve(imageBuffer), 'image/jpeg', quality);
         } else { resolve(imageBuffer); }
         URL.revokeObjectURL(url);
@@ -61,6 +55,37 @@ export default function UltimateLocalCompressor() {
       img.src = url;
     });
   };
+  // دالة الفحص العميقة للوصول إلى الصور المحشوة داخل النماذج والهياكل الفرعية المعقدة
+  const processResourcesDeep = async (resources: PDFDict, finalDoc: PDFDocument, scale: number, quality: number, isGray: boolean) => {
+    if (!resources) return;
+    const xObjects = resources.get(PDFName.of('XObject'));
+    if (xObjects instanceof PDFDict) {
+      for (const key of xObjects.keys()) {
+        const xObj = xObjects.get(key);
+        if (xObj instanceof PDFRawStream) {
+          const subtype = xObj.dict.get(PDFName.of('Subtype'));
+          
+          // 1. استهداف الصور المباشرة والمخفية برمجياً
+          if (subtype === PDFName.of('Image')) {
+            const compressed = await processAndCompressImageLocal(xObj.contents, scale, quality, isGray);
+            if (compressed && compressed.length < xObj.contents.length) {
+              xObj.contents = compressed;
+              xObj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+              xObj.dict.set(PDFName.of('Length'), finalDoc.context.obj(compressed.length));
+            }
+          } 
+          // 2. الغوص داخل الهياكل الفرعية (Form XObjects) إذا كانت الصور محشوة بداخلها
+          else if (subtype === PDFName.of('Form')) {
+            const subResources = xObj.dict.get(PDFName.of('Resources'));
+            if (subResources instanceof PDFDict) {
+              await processResourcesDeep(subResources, finalDoc, scale, quality, isGray);
+            }
+          }
+        }
+      }
+    }
+  };
+
   const handlePdfProcessing = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -68,54 +93,35 @@ export default function UltimateLocalCompressor() {
     const file = fileList[0];
     setFileInfo({ name: file.name, size: formatBytes(file.size) });
     setIsProcessing(true);
-    setStatusMessage('جاري تهيئة بنية المستند ومعالجة الهيكل البرمجي القياسي...');
+    setStatusMessage('جاري تهيئة بنية الفحص والتحليل العميقة للمستند...');
 
     try {
       const arrayBuffer = await file.arrayBuffer();
       const srcDoc = await PDFDocument.load(arrayBuffer);
       const finalDoc = await PDFDocument.create();
 
-      // إعدادات نسب الضغط الفيزيائية المحسنة لتقليص المساحة بقوة
-      let scaleRatio = 0.50; 
-      let jpegQuality = 0.50; 
+      // فرض إعدادات ضغط فيزيائي عنيفة لضمان حدوث الفارق اللحظي في الحجم
+      let scaleRatio = 0.45; 
+      let jpegQuality = 0.45; 
 
-      if (compressionLevel === 'extreme') { scaleRatio = 0.30; jpegQuality = 0.35; }
-      else if (compressionLevel === 'low') { scaleRatio = 0.75; jpegQuality = 0.65; }
+      if (compressionLevel === 'extreme') { scaleRatio = 0.25; jpegQuality = 0.30; }
+      else if (compressionLevel === 'low') { scaleRatio = 0.70; jpegQuality = 0.60; }
 
       const isGray = colorMode === 'grayscale';
-      const totalPages = srcDoc.getPageCount();
       const copiedPages = await finalDoc.copyPages(srcDoc, srcDoc.getPageIndices());
       
       for (let i = 0; i < copiedPages.length; i++) {
-        setStatusMessage(`جاري تصفية وكسر بكسلات الصور في الصفحة (${i + 1}) من أصل (${totalPages})...`);
+        setStatusMessage(`جاري المسح العميق وضغط كافة بكسلات الموارد في الصفحة (${i + 1})...`);
         const targetPage = copiedPages[i];
-        
         const resources = (targetPage as any).node?.Resources;
-        const xObjects = resources?.get?.(PDFName.of('XObject'));
         
-        if (xObjects && typeof xObjects.keys === 'function') {
-          for (const key of xObjects.keys()) {
-            const xObj = xObjects.get(key);
-            if (xObj instanceof PDFRawStream && xObj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
-              const originalBytes = xObj.contents;
-              const filterType = xObj.dict.get(PDFName.of('Filter'))?.toString() || '';
-              
-              // استدعاء محرك المعالجة الشامل لـ جميع الفلاتر (JPEG & FlateDecode/PNG)
-              const compressedBytes = await processAndCompressImageLocal(originalBytes, scaleRatio, jpegQuality, isGray, filterType);
-              
-              if (compressedBytes && compressedBytes.length > 0) {
-                xObj.contents = compressedBytes;
-                // 🔐 إجبار الهيكل على قراءة ترميز الصور الجديد كـ JPEG قياسي متوافق مع طابعات أدوبي
-                xObj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
-                xObj.dict.set(PDFName.of('Length'), finalDoc.context.obj(compressedBytes.length));
-              }
-            }
-          }
+        if (resources instanceof PDFDict) {
+          await processResourcesDeep(resources, finalDoc, scaleRatio, jpegQuality, isGray);
         }
         finalDoc.addPage(targetPage);
       }
 
-      setStatusMessage('جاري صياغة ملف الـ PDF المتوافق كلياً مع أدوبي أكروبات...');
+      setStatusMessage('جاري كتابة الهيكل النهائي النظيف المتوافق مع أدوبي أكروبات...');
       const compressedPdfBytes = await finalDoc.save({ useObjectStreams: false, addMissingPageBytestream: true });
 
       const downloadBlob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
@@ -128,7 +134,7 @@ export default function UltimateLocalCompressor() {
       setStatusMessage(`اكتمل الضغط بنجاح تام! الحجم الجديد: ${formatBytes(compressedPdfBytes.length)}`);
     } catch (error) {
       console.error(error); setIsProcessing(false);
-      setStatusMessage('حدث خطأ أثناء معالجة بنية المستند، تأكد من سلامة ملف الـ PDF الأصلي.');
+      setStatusMessage('حدث خطأ أثناء الفحص الموجه للمستند، تأكد من سلامة ملف الـ PDF الأصلي.');
     }
   };
 
