@@ -221,6 +221,10 @@ export async function POST(req: NextRequest) {
         const originalName = sourceFileMeta.data.name?.replace(/^MochaVault_Raw_\d+_/, '') || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
+        // 📏 تحويل البايتات الحقيقية للضغط النهائي إلى Buffer لحساب الحجم بدقة بالبايت
+        const finalBuffer = Buffer.from(pdfBytes);
+        const finalFileSize = finalBuffer.length;
+
         const createRes = await googleDrive.files.create({
           requestBody: {
             name: processedFileName,
@@ -228,7 +232,7 @@ export async function POST(req: NextRequest) {
           },
           media: {
             mimeType: 'application/pdf',
-            body: Readable.from(processedBuffer),
+            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط
           },
           fields: 'id, name, webContentLink, webViewLink, size',
         });
@@ -253,13 +257,14 @@ export async function POST(req: NextRequest) {
           success: true,
           kind: 'file',
           filename: finalMeta.data.name,
-          size: finalMeta.data.size ? Number(finalMeta.data.size) : processedBuffer.length,
+          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة دون انتظار تحديث سيرفرات جوجل
+          size: finalFileSize,
+          actualSize: finalFileSize,
           message: 'تمت المعالجة الفيزيائية الموجهة وحفظ الملف في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
-      }
-    }
+
 
     const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
@@ -303,11 +308,18 @@ export async function POST(req: NextRequest) {
       fields: 'id, name, webContentLink, webViewLink',
     });
 
+        // جلب الحجم الحقيقي والنهائي المضغوط بالبايتات بدقة 100% لإرساله فوراً للواجهة
+    const finalFileSize = pdfBytes.byteLength;
+
     return NextResponse.json({
       success: fileId,
       downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
-      filename: fileMeta.data.name
+      filename: fileMeta.data.name,
+      // 📏 تمرير الحجم الحقيقي الجديد للواجهة مباشرة لمنع التضارب
+      size: finalFileSize,
+      actualSize: finalFileSize
     });
+
   } catch (error: any) {
     console.error('Pipeline API Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الموجه فنيًا' }, { status: 500 });
