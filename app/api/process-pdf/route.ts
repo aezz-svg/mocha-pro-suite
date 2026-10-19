@@ -169,7 +169,6 @@ async function processPdfBuffer(
 
   return Buffer.from(pdfBytes);
 }
-
 export async function POST(req: NextRequest) {
   try {
     const { folderId, googleDrive } = getGoogleDriveClient();
@@ -221,8 +220,8 @@ export async function POST(req: NextRequest) {
         const originalName = sourceFileMeta.data.name?.replace(/^MochaVault_Raw_\d+_/, '') || 'document.pdf';
         const processedFileName = `MochaProcessed_${operation}_${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        // 📏 تحويل البايتات الحقيقية للضغط النهائي إلى Buffer لحساب الحجم بدقة بالبايت
-        const finalBuffer = Buffer.from(pdfBytes);
+        // 📏 تحويل بايتات المعالجة الحقيقية والنهائية إلى Buffer لحساب الحجم المتقلص بالبايت بدقة
+        const finalBuffer = Buffer.from(processedBuffer);
         const finalFileSize = finalBuffer.length;
 
         const createRes = await googleDrive.files.create({
@@ -232,7 +231,7 @@ export async function POST(req: NextRequest) {
           },
           media: {
             mimeType: 'application/pdf',
-            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط
+            body: Readable.from(finalBuffer), // رفع الملف الحقيقي المضغوط الخالي من الخلفيات السوداء
           },
           fields: 'id, name, webContentLink, webViewLink, size',
         });
@@ -257,15 +256,17 @@ export async function POST(req: NextRequest) {
           success: true,
           kind: 'file',
           filename: finalMeta.data.name,
-          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة دون انتظار تحديث سيرفرات جوجل
+          // 📊 فرض الحجم الحقيقي المضغوط مباشرة للواجهة دون تضارب مع خوادم جوجل
           size: finalFileSize,
           actualSize: finalFileSize,
           message: 'تمت المعالجة الفيزيائية الموجهة وحفظ الملف في سحابة جوجل درايف.',
           downloadUrl: finalMeta.data.webContentLink || finalMeta.data.webViewLink,
           timestamp: new Date().toISOString()
         });
+      } // 👈 إغلاق شرط process_operation بشكل صحيح
+    } // 👈 إغلاق شرط application/json بشكل صحيح
 
-
+    // 📦 هنا يبدأ جزء الـ Multipart Form Data لمعالجة رفع أجزاء الملف (Chunks) تلقائياً بشكل معزول وسليم
     const formData = await req.formData();
     const chunk = formData.get('chunk') as File;
     const filename = formData.get('filename') as string;
@@ -305,38 +306,22 @@ export async function POST(req: NextRequest) {
 
     const fileMeta = await googleDrive.files.get({
       fileId: fileId,
-      fields: 'id, name, webContentLink, webViewLink',
+      fields: 'id, name, webContentLink, webViewLink, size',
     });
 
-        // جلب الحجم الحقيقي والنهائي المضغوط بالبايتات بدقة 100% لإرساله فوراً للواجهة
-    const finalFileSize = pdfBytes.byteLength;
+    // جلب حجم أجزاء الملف المجمعة حالياً من الـ Buffer المدمج مباشرة لمنع التضارب
+    const currentChunkSize = combinedBuffer.length;
 
     return NextResponse.json({
       success: fileId,
       downloadUrl: fileMeta.data.webContentLink || fileMeta.data.webViewLink,
       filename: fileMeta.data.name,
-      // 📏 تمرير الحجم الحقيقي الجديد للواجهة مباشرة لمنع التضارب
-      size: finalFileSize,
-      actualSize: finalFileSize
+      size: currentChunkSize,
+      actualSize: currentChunkSize
     });
 
   } catch (error: any) {
     console.error('Pipeline API Error:', error);
     return NextResponse.json({ error: error.message || 'خطأ في معالجة أنبوب السحابة الموجه فنيًا' }, { status: 500 });
-  }
-}
-
-export async function GET() {
-  try {
-    const { folderId, googleDrive } = getGoogleDriveClient();
-    const res = await googleDrive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      orderBy: 'createdTime desc',
-      pageSize: 4,
-      fields: 'files(id, name, webViewLink, webContentLink, createdTime, size)',
-    });
-    return NextResponse.json({ success: true, files: res.data.files || [] });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
