@@ -28,6 +28,7 @@ export default function UltimateLocalCompressor() {
     isGray: boolean
   ): Promise<Uint8Array> => {
     return new Promise((resolve) => {
+      if (!imageBuffer || imageBuffer.length === 0) { resolve(new Uint8Array()); return; }
       const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
       const url = URL.createObjectURL(blob);
       const img = new Image();
@@ -66,7 +67,7 @@ export default function UltimateLocalCompressor() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const srcDoc = await PDFDocument.load(arrayBuffer);
-      const cleanDoc = await PDFDocument.create(); // مستند بكر وجديد لتفادي التلف
+      const cleanDoc = await PDFDocument.create();
 
       let scaleRatio = 0.60;
       let jpegQuality = 0.55;
@@ -77,7 +78,6 @@ export default function UltimateLocalCompressor() {
       const isGray = colorMode === 'grayscale';
       const pages = srcDoc.getPages();
 
-      // رسم الصفحات القديمة داخل الصفحات الجديدة بشكل نظيف ومحمي
       for (let i = 0; i < pages.length; i++) {
         setStatusMessage(`جاري معالجة وتصفية بكسلات محتويات الصفحة (${i + 1}) من أصل (${pages.length})...`);
         const originalPage = pages[i];
@@ -87,15 +87,23 @@ export default function UltimateLocalCompressor() {
         const [embeddedPage] = await cleanDoc.embedPages([srcDoc], [i]);
         newPage.drawPage(embeddedPage, { x: 0, y: 0, width, height });
 
-        // استخراج وضغط الصور المضمنة برمجياً عبر الـ Canvas بشكل مستقل
-        const resources = (originalPage as any).node.Resources;
-        const xObjects = resources?.get?.(PDFName.of('XObject'));
-        if (xObjects) {
+        // الفحص الآمن والحماية المطلقة لمنع خطأ الـ context و undefined
+        const resources = (originalPage as any).node?.Resources;
+        if (!resources) continue;
+        
+        const xObjects = typeof resources.get === 'function' ? resources.get(Symbol.for('PDFName.XObject') as any || 'XObject') : null;
+        if (xObjects && typeof xObjects.keys === 'function') {
           for (const key of xObjects.keys()) {
             const xObj = xObjects.get(key);
-            if (xObj instanceof PDFRawStream && xObj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
-              const compressedBytes = await processAndCompressImageLocal(xObj.contents, scaleRatio, jpegQuality, isGray);
-              await cleanDoc.embedJpeg(compressedBytes); // الحقن الرسمي الآمن لأدوبي
+            // التأكد التام من أن الكائن معرف ويحتوي على خصائص صحيحة وقابلة للقراءة
+            if (xObj && xObj.dict && typeof xObj.dict.get === 'function') {
+              const subtype = xObj.dict.get(Symbol.for('PDFName.Subtype') as any || 'Subtype');
+              if (subtype && subtype.toString() === '/Image' && xObj.contents) {
+                const compressedBytes = await processAndCompressImageLocal(xObj.contents, scaleRatio, jpegQuality, isGray);
+                if (compressedBytes && compressedBytes.length > 0) {
+                  await cleanDoc.embedJpeg(compressedBytes);
+                }
+              }
             }
           }
         }
@@ -114,7 +122,7 @@ export default function UltimateLocalCompressor() {
       setStatusMessage(`اكتمل الضغط المحلي بنجاح! الحجم الجديد: ${formatBytes(compressedPdfBytes.length)}`);
     } catch (error) {
       console.error(error); setIsProcessing(false);
-      setStatusMessage('حدث خطأ، يرجى التأكد من سلامة ملف الـ PDF الأصلي.');
+      setStatusMessage('حدث خطأ أثناء معالجة هذا الملف المحدد، يرجى تجربة ملف آخر.');
     }
   };
 
