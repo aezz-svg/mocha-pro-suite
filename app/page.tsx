@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import './globals.css';
 
-// استدعاء محرك الأوامر والنظام لربط أزرار الأجنحة الستة بنواة الحواسب
+// السلاح السري: استدعاء دالة invoke لربط الأزرار مباشرة بنواة نظام التشغيل
 let invoke: any = null;
 if (typeof window !== 'undefined' && (window as any).__TAURI_METADATA__) {
   import('@tauri-apps/api/tauri').then((mod) => { invoke = mod.invoke; });
@@ -17,14 +17,13 @@ export default function SovereignPdfDashboard() {
   const [processedSize, setProcessedSize] = useState<string>('');
   
   // المتغيرات والخيارات المتفرعة للأجنحة التشغيلية الستة كاملة
-  const [activeSuite, setActiveSuite] = useState('S-01'); // الجناح النشط حالياً
+  const [activeSuite, setActiveSuite] = useState('S-01');
   const [compressionLevel, setCompressionLevel] = useState('balanced');
   const [colorMode, setColorMode] = useState('rgb');
   const [userPassword, setUserPassword] = useState('');
   const [allowPrinting, setAllowPrinting] = useState(true);
   const [startPage, setStartPage] = useState(1);
   const [endPage, setEndPage] = useState(1);
-  const [secondaryFilePath, setSecondaryFilePath] = useState('');
   const [pdfaCompliance, setPdfaCompliance] = useState('PDF/A-2b');
 
   const formatBytes = (bytes: number) => {
@@ -45,33 +44,31 @@ export default function SovereignPdfDashboard() {
       }
 
       const inputPath = (selectedFile as any).path || selectedFile.name;
-      // توليد صيغة الملف الجديد المخرج بحسب نوع الجناح
       const outputPath = inputPath.replace('.pdf', `_Mocha_${activeSuite}.pdf`);
       
       setProgress(60);
       setStatusMessage(`جاري إطلاق محرك الأجنحة لتنفيذ عملية الجناح [${activeSuite}]...`);
       let result = '';
 
-      // الفرز والتحويل الفيزيائي الحقيقي للأجنحة التشغيلية الستة
       switch (activeSuite) {
-        case 'S-01': // الملفات والملاحة (الضغط العنيف)
+        case 'S-01':
           result = await invoke('execute_ghostscript_compress', { inputPath, outputPath, level: compressionLevel });
           setProcessedSize('متقلص لـ 39 MB تقريباً (سحق حقيقي للبكسلات)');
           break;
-        case 'S-02': // تنظيم الصفحات (التقطيع والدمج)
+        case 'S-02':
           result = await invoke('execute_ghostscript_organize', { inputPath, outputPath, startPage: Number(startPage), endPage: Number(endPage) });
           setProcessedSize('متقلص بحسب عدد الصفحات');
           break;
-        case 'S-04': // المراجعة والترميز (استخراج النصوص الصافية)
+        case 'S-04':
           const textOutputPath = inputPath.replace('.pdf', '_extracted_text.txt');
           result = await invoke('execute_ghostscript_extract_text', { inputPath, outputPath: textOutputPath });
           setProcessedSize('ملف نصي صافي TXT');
           break;
-        case 'S-05': // الأمان والنماذج (التشفير وحجب أحبار الطابعة)
+        case 'S-05':
           result = await invoke('execute_ghostscript_encrypt', { inputPath, outputPath, userPass: userPassword, ownerPass: 'MochaSecret123', allowPrint: allowPrinting });
           setProcessedSize(formatBytes(selectedFile.size));
           break;
-        case 'S-06': // الهندسة المتقدمة (الامتثال لمعايير الأرشفة العالمية)
+        case 'S-06':
           result = await invoke('execute_ghostscript_pdfa', { inputPath, outputPath, compliance: pdfaCompliance });
           setProcessedSize('مستند معتمد للأرشفة المستدامة');
           break;
@@ -92,14 +89,14 @@ export default function SovereignPdfDashboard() {
     <div className="min-h-screen bg-[#0d0e12] text-gray-100 flex flex-col items-center justify-center p-6 text-right" dir="rtl">
       <div className="max-w-3xl w-full bg-[#161820] rounded-2xl shadow-2xl p-8 border border-gray-800/80">
         
-        {/* الترويسة والعنوان الإمبراطوري الشامل */}
+        {/* الترويسة والعنوان */}
         <div className="text-center mb-8">
           <div className="text-amber-500 font-mono text-xs tracking-widest mb-2">☕ MOCHA PRO SUITE INTERFACE v10.0</div>
           <h1 className="text-3xl font-extrabold text-white">نظام Mocha Pro | الأجنحة التشغيلية الشاملة للـ PDF</h1>
           <p className="text-sm text-gray-400 mt-2">لوحة قيادة سيادية متكاملة هندسياً مع كافة وظائف ومحركات الحواسب الفعالة</p>
         </div>
 
-        {/* 🎛️ التصميم الفخم الحقيقي للأجنحة التشغيلية الستة (SuiteTabs المطور والمربوط برمجياً) */}
+        {/* أزرار الأجنحة الستة */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6 text-xs font-semibold">
           <button onClick={() => setActiveSuite('S-01')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-01' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>📁 S-01</span><span>الملفات والملاحة</span></button>
           <button onClick={() => setActiveSuite('S-02')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-02' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>🎚️ S-02</span><span>تنظيم الصفحات</span></button>
@@ -109,7 +106,7 @@ export default function SovereignPdfDashboard() {
           <button onClick={() => setActiveSuite('S-06')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-06' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>⚙️ S-06</span><span>الهندسة المتقدمة</span></button>
         </div>
 
-        {/* 🛠️ لوحة عرض الإعدادات والخيارات المتفرعة الديناميكية */}
+        {/* لوحة عرض الإعدادات */}
         <div className="bg-[#12131a] p-5 rounded-xl mb-6 border border-gray-800/60 text-xs space-y-4">
           {activeSuite === 'S-01' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -136,14 +133,25 @@ export default function SovereignPdfDashboard() {
           )}
         </div>
 
-        {/* صندوق إسقاط وضخ المستندات للعمليات */}
+        {/* صندوق إسقاط وضخ المستندات للعمليات - ✅ تم تصحيح الكود وإزالة النقطة المكسورة هنا تماماً */}
         <div className="border-2 border-dashed border-gray-700 hover:border-amber-500/50 rounded-xl p-10 text-center relative bg-[#1c1f2b]/50 group mb-6 cursor-pointer">
-          <input type="file" accept="application/pdf" onChange={(e) => e.target.files?. && executeSuiteOperation(e.target.files)} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+          <input 
+            type="file" 
+            accept="application/pdf" 
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) {
+                executeSuiteOperation(files[0]);
+              }
+            }} 
+            disabled={uploading} 
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+          />
           <span className="text-5xl block mb-3 group-hover:scale-105 transition-transform">☕</span>
           <span className="block font-semibold text-gray-200">اضغط هنا أو أسقط الملف لتفعيل معالجة الجناح المختار</span>
         </div>
 
-        {/* شاشة مراقبة العمليات والحجم الفيزيائي */}
+        {/* شاشة مراقبة العمليات */}
         {file && (
           <div className="bg-[#1c1f2b] border border-gray-800 rounded-xl p-4 text-xs">
             <div className="flex justify-between items-center mb-2"><span className="font-bold text-amber-500 max-w-[340px] truncate">{file.name}</span><span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">{formatBytes(file.size)}</span></div>
