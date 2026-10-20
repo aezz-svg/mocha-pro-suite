@@ -39,14 +39,5 @@
     "externalBin": [
       "binaries/gs"
     ]
-  },
-  "allowlist": {
-    "all": false,
-    "shell": {
-      "sidecar": true,
-      "scope": [
-        { "name": "binaries/gs", "sidecar": true }
-      ]
-    }
   }
 }
