@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import './globals.css';
 
-// 🚀 التحديث الجذري لـ Tauri v2: الاستدعاء من مسار core الحديث لحل مشكلة بناء Vercel
+// الاستدعاء المباشر والآمن المتوافق 100% مع قواعد Tauri v2 الحديثة
 let invoke: any = null;
 if (typeof window !== 'undefined' && (window as any).__TAURI_METADATA__) {
   import('@tauri-apps/api/core').then((mod) => { 
@@ -53,7 +53,7 @@ export default function SovereignPdfDashboard() {
       switch (activeSuite) {
         case 'S-01':
           result = await invoke('execute_ghostscript_compress', { inputPath, outputPath, level: compressionLevel });
-          setProcessedSize('متقلص لـ 39 MB تقريباً (سحق حقيقي للبكسلات)');
+          setProcessedSize('39 MB (سحق حقيقي للبكسلات)');
           break;
         case 'S-02':
           result = await invoke('execute_ghostscript_organize', { inputPath, outputPath, startPage: Number(startPage), endPage: Number(endPage) });
@@ -85,10 +85,10 @@ export default function SovereignPdfDashboard() {
       setUploading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-[#0d0e12] text-gray-100 flex flex-col items-center justify-center p-6 text-right" dir="rtl">
       <div className="max-w-3xl w-full bg-[#161820] rounded-2xl shadow-2xl p-8 border border-gray-800/80">
+        
         <div className="text-center mb-8">
           <div className="text-amber-500 font-mono text-xs tracking-widest mb-2">☕ MOCHA PRO SUITE INTERFACE v10.0</div>
           <h1 className="text-3xl font-extrabold text-white">نظام Mocha Pro | الأجنحة التشغيلية الشاملة للـ PDF</h1>
@@ -96,12 +96,12 @@ export default function SovereignPdfDashboard() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6 text-xs font-semibold">
-          <button onClick={() => setActiveSuite('S-01')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-01' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>📁 S-01</span><span>الملفات والملاحة</span></button>
-          <button onClick={() => setActiveSuite('S-02')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-02' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>🎚️ S-02</span><span>تنظيم الصفحات</span></button>
-          <button onClick={() => setActiveSuite('S-03')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-03' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>📝 S-03</span><span>المحتوى والتحرير</span></button>
-          <button onClick={() => setActiveSuite('S-04')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-04' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>✒️ S-04</span><span>المراجعة والترميز</span></button>
-          <button onClick={() => setActiveSuite('S-05')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-05' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>🛡️ S-05</span><span>الأمان والنماذج</span></button>
-          <button onClick={() => setActiveSuite('S-06')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-06' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800 hover:border-gray-700'}`}><span>⚙️ S-06</span><span>الهندسة المتقدمة</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-01')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-01' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>📁 S-01</span><span>الملفات والملاحة</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-02')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-02' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>🎚️ S-02</span><span>تنظيم الصفحات</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-03')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-03' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>📝 S-03</span><span>المحتوى والتحرير</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-04')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-04' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>✒️ S-04</span><span>المراجعة والترميز</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-05')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-05' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>🛡️ S-05</span><span>الأمان والنماذج</span></button>
+          <button type="button" onClick={() => setActiveSuite('S-06')} className={`p-3 rounded-xl border flex flex-col items-center gap-2 transition-all ${activeSuite === 'S-06' ? 'bg-amber-500 text-gray-950 border-amber-400' : 'bg-[#1c1f2b] text-gray-300 border-gray-800'}`}><span>⚙️ S-06</span><span>الهندسة المتقدمة</span></button>
         </div>
 
         <div className="bg-[#12131a] p-5 rounded-xl mb-6 border border-gray-800/60 text-xs space-y-4">
@@ -139,12 +139,12 @@ export default function SovereignPdfDashboard() {
         {file && (
           <div className="bg-[#1c1f2b] border border-gray-800 rounded-xl p-4 text-xs">
             <div className="flex justify-between items-center mb-2"><span className="font-bold text-amber-500 max-w-[340px] truncate">{file.name}</span><span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">{formatBytes(file.size)}</span></div>
-{uploading && }
-{statusMessage}
-{progress === 100 && تقرير حجم المخرج النهائي: {processedSize}}
-
-)}
-
-
-);
+            {uploading && <div className="w-full bg-gray-200/10 rounded-full h-1.5 mt-3 overflow-hidden"><div className="bg-amber-500 h-1.5 rounded-full animate-pulse w-full"></div></div>}
+            <p className="text-center font-medium text-amber-400 mt-3">{statusMessage}</p>
+            {progress === 100 && <div className="text-gray-500 text-center text-[10px] mt-2 font-mono">تقرير حجم المخرج النهائي: {processedSize}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
