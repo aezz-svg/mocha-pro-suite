@@ -18,7 +18,7 @@ async fn execute_ghostscript_compress(app_handle: tauri::AppHandle, input_path: 
         .map_err(|e| e.to_string())?
         .args(&["-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", &format!("-dPDFSETTINGS={}", gs_setting), "-dNOPAUSE", "-dQUIET", "-dBATCH", &format!("-sOutputFile={}", output_path), &input_path])
         .output()
-        .await // 🚀 الانتظار الفيزيائي المتوافق مع Tauri v2
+        .await
         .map_err(|e| e.to_string())?;
 
     if output.status.success() { Ok("تمت المعالجة الفيزيائية وسحق بكسلات الصور بنجاح!".to_string()) } 
@@ -35,7 +35,7 @@ async fn execute_ghostscript_encrypt(app_handle: tauri::AppHandle, input_path: S
         .map_err(|e| e.to_string())?
         .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), "-sEncryptionMethod=AES", &format!("-sUserPassword={}", user_pass), &format!("-sOwnerPassword={}", owner_pass), "-dKeyLength=128", &format!("-dPermissions={}", perm_bit), &input_path])
         .output()
-        .await // 🚀 الانتظار الفيزيائية لعملية التشفير القياسية
+        .await
         .map_err(|e| e.to_string())?;
 
     if output.status.success() { Ok("تم تشفير وقفل ملف الـ PDF برمجياً وحظر الصلاحيات!".to_string()) } 
@@ -62,7 +62,7 @@ async fn execute_ghostscript_organize(app_handle: tauri::AppHandle, input_path: 
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-dFirstPage={}", start_page), &format!("-dLastPage={}", end_page), &format=\"-sOutputFile={}\", output_path), &input_path])
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-dFirstPage={}", start_page), &format!("-dLastPage={}", end_page), &format!("-sOutputFile={}", output_path), &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -77,7 +77,7 @@ async fn execute_ghostscript_extract_text(app_handle: tauri::AppHandle, input_pa
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=txtwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!(\"-sOutputFile={}\", output_path), &input_path])
+        .args(&["-sDEVICE=txtwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -92,7 +92,7 @@ async fn execute_ghostscript_pdfa(app_handle: tauri::AppHandle, input_path: Stri
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dPDFA=2", "-sColorConversionStrategy=UseDeviceDependentColor", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!(\"-sOutputFile={}\", output_path), &input_path])
+        .args(&["-sDEVICE=pdfwrite", "-dPDFA=2", "-sColorConversionStrategy=UseDeviceDependentColor", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
