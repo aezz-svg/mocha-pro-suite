@@ -1,54 +1,75 @@
-{
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "MochaPdfOptimizer",
-  "version": "0.1.0",
-  "identifier": "com.mochapro.pdfoptimizer",
-  "build": {
-    "frontendDist": "../out",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "نظام Mocha Pro | الإمبراطوري الشامل للـ PDF",
-        "width": 1020,
-        "height": 720,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
-    },
-    // 🚀 حقن وتأمين مسار المحرك الفيزيائي الخارجي كـ Sidecar داخل الحزمة
-    "externalBin": [
-      "binaries/gs"
-    ]
-  },
-  "allowlist": {
-    "all": false,
-    // تفعيل صلاحية تشغيل أوامر النظام والمحركات الخارجية محلياً بنجاح
-    "shell": {
-      "sidecar": true,
-      "scope": [
-        { "name": "binaries/gs", "sidecar": true }
-      ]
-    }
-  }
+// src-tauri/src/main.rs
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use tauri::api::process::Command;
+
+// 1️⃣ زر الضغط: سحق حجم البكسلات الممسوحة ضوئياً فيزيائياً لـ 39 ميجا
+#[tauri::command]
+async fn execute_ghostscript_compress(input_path: String, output_path: String, level: String) -> Result<String, String> {
+    let gs_setting = match level.as_str() {
+        "extreme" => "/screen",   // 72 DPI (أقصى تقليص)
+        "low" => "/printer",      // 300 DPI (أعلى دقة حادة)
+        _ => "/ebook",            // 150 DPI (متوازن ومعياري)
+    };
+
+    let output = Command::new_sidecar("gs")
+        .map_err(|e| e.to_string())?
+        .args(&["-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", &format!("-dPDFSETTINGS={}", gs_setting), "-dNOPAUSE", "-dQUIET", "-dBATCH", &format!("-sOutputFile={}", output_path), &input_path])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() { Ok("تمت المعالجة الفيزيائية للصور بنجاح!".to_string()) } 
+    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+}
+
+// 2️⃣ زر الحماية والتشفير: إجبار النواة على قفل الملف بكلمة مرور وحظر الطباعة
+#[tauri::command]
+async fn execute_ghostscript_encrypt(input_path: String, output_path: String, user_pass: String, owner_pass: String, allow_print: bool) -> Result<String, String> {
+    let perm_bit = if allow_print { "-4" } else { "-64" }; // منع الطباعة كلياً من نواة أدوبي
+    
+    let output = Command::new_sidecar("gs")
+        .map_err(|e| e.to_string())?
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), "-sEncryptionMethod=AES", &format!("-sUserPassword={}", user_pass), &format!("-sOwnerPassword={}", owner_pass), &format!("-dKeyLength=128"), &format!("-dPermissions={}", perm_bit), &input_path])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() { Ok("تم تشفير وقفل ملف الـ PDF برمجياً بالكامل!".to_string()) } 
+    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+}
+// 3️⃣ زر الدمج: ربط ملفين وجدولتهما في مسار بايتات موحد مستقر
+#[tauri::command]
+async fn execute_ghostscript_merge(file_a: String, file_b: String, output_path: String) -> Result<String, String> {
+    let output = Command::new_sidecar("gs")
+        .map_err(|e| e.to_string())?
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &file_a, &file_b])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() { Ok("تم دمج الملفين في مستند فيزيائي واحد!".to_string()) } 
+    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+}
+
+// 4️⃣ زر التقطيع والتنظيم: استخراج صفحات محددة بدقة هندسية صارمة من جذر الملف
+#[tauri::command]
+async fn execute_ghostscript_organize(input_path: String, output_path: String, start_page: i32, end_page: i32) -> Result<String, String> {
+    let output = Command::new_sidecar("gs")
+        .map_err(|e| e.to_string())?
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-dFirstPage={}", start_page), &format!("-dLastPage={}", end_page), &format!("-sOutputFile={}", output_path), &input_path])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() { Ok("تم تقطيع وتوليد الملف المنظم بنجاح!".to_string()) } 
+    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+}
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            execute_ghostscript_compress,
+            execute_ghostscript_encrypt,
+            execute_ghostscript_merge,
+            execute_ghostscript_organize
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
