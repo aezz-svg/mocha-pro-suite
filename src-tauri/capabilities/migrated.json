@@ -1,0 +1,10 @@
+
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "migrated",
+  "description": "Migrated permissions for Mocha Pro",
+  "windows": ["main"],
+  "permissions": [
+    "dialog:default"
+  ]
+}

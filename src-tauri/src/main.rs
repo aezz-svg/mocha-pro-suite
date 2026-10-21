@@ -147,6 +147,7 @@ async fn execute_ghostscript_pdfa(app_handle: tauri::AppHandle, input_path: Stri
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init()) // 🚀 حقن محرك حوارات النظام الرسمي لـ Tauri v2 هنا
         .invoke_handler(tauri::generate_handler![
             execute_ghostscript_compress,
             execute_ghostscript_encrypt,
@@ -158,3 +159,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
