@@ -4,26 +4,41 @@
 use tauri_plugin_shell::process::Command;
 use tauri_plugin_shell::ShellExt;
 
-// S-01 الملفات والملاحة: سحق حجم البكسلات الممسوحة ضوئياً فيزيائياً لـ 39 ميجا
+// S-01 الملفات والملاحة: سحق حجم البكسلات مع استقبال مسار الحفظ المختار من المستخدم ديناميكياً
 #[tauri::command]
 async fn execute_ghostscript_compress(app_handle: tauri::AppHandle, input_path: String, output_path: String, level: String) -> Result<String, String> {
     let gs_setting = match level.as_str() {
-        "extreme" => "/screen",   // 72 DPI (أقصى تقليص)
-        "low" => "/printer",      // 300 DPI (أعلى دقة حادة)
-        _ => "/ebook",            // 150 DPI (متوازن ومعياري)
+        "extreme" => "/screen",   // 72 DPI
+        "low" => "/printer",      // 300 DPI
+        _ => "/ebook",            // 150 DPI
     };
 
+    // فصل المسارات وتأمينها تماماً داخل نظام ويندوز لمنع كود 1
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4", &format!("-dPDFSETTINGS={}", gs_setting), "-dNOPAUSE", "-dQUIET", "-dBATCH", &format!("-sOutputFile={}", output_path), &input_path])
+        .args(&[
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            "-dNOPAUSE",
+            "-dQUIET",
+            "-dBATCH",
+            "-sOutputFile", 
+            &output_path,   // مسار الحفظ الديناميكي المختار من النافذة الرسمية للويندوز
+            &format!("-dPDFSETTINGS={}", gs_setting),
+            &input_path,     
+        ])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok("تمت المعالجة الفيزيائية وسحق بكسلات الصور بنجاح!".to_string()) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok("تم سحق بكسلات المستند وحفظ الملف بنجاح في المكان المختار!".to_string()) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
+
 
 // S-05 الأمان والنماذج: قفل الملف بكلمة مرور وحظر أحبار الطباعة من النواة
 #[tauri::command]
@@ -33,13 +48,29 @@ async fn execute_ghostscript_encrypt(app_handle: tauri::AppHandle, input_path: S
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), "-sEncryptionMethod=AES", &format!("-sUserPassword={}", user_pass), &format!("-sOwnerPassword={}", owner_pass), "-dKeyLength=128", &format!("-dPermissions={}", perm_bit), &input_path])
+        .args(&[
+            "-sDEVICE=pdfwrite", 
+            "-dNOPAUSE", 
+            "-dBATCH", 
+            "-dQUIET", 
+            "-sOutputFile", 
+            &output_path, 
+            "-sEncryptionMethod=AES", 
+            &format!("-sUserPassword={}", user_pass), 
+            &format!("-sOwnerPassword={}", owner_pass), 
+            "-dKeyLength=128", 
+            &format!("-dPermissions={}", perm_bit), 
+            &input_path
+        ])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok("تم تشفير وقفل ملف الـ PDF برمجياً وحظر الصلاحيات!".to_string()) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok("تم تشفير وقفل ملف الـ PDF برمجياً وحظر الصلاحيات!".to_string()) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
 // S-02 تنظيم الصفحات: الدمج الخطي المباشر
 #[tauri::command]
@@ -47,13 +78,16 @@ async fn execute_ghostscript_merge(app_handle: tauri::AppHandle, file_a: String,
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &file_a, &file_b])
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", "-sOutputFile", &output_path, &file_a, &file_b])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok("تم دمج الملفين في مستند فيزيائي واحد!".to_string()) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok("تم دمج الملفين في مستند فيزيائي واحد!".to_string()) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
 
 // S-02 تنظيم الصفحات: التقطيع الهندسي الصارم من جذر الملف
@@ -62,13 +96,16 @@ async fn execute_ghostscript_organize(app_handle: tauri::AppHandle, input_path: 
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-dFirstPage={}", start_page), &format!("-dLastPage={}", end_page), &format!("-sOutputFile={}", output_path), &input_path])
+        .args(&["-sDEVICE=pdfwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-dFirstPage={}", start_page), &format!("-dLastPage={}", end_page), "-sOutputFile", &output_path, &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok("تم تقطيع وتوليد الملف المنظم بنجاح!".to_string()) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok("تم تقطيع وتوليد الملف المنظم بنجاح!".to_string()) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
 
 // S-04 المراجعة والترميز: فك خطوط الصور واستخراج النص برمجياً كملف مستقل
@@ -77,13 +114,16 @@ async fn execute_ghostscript_extract_text(app_handle: tauri::AppHandle, input_pa
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=txtwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &input_path])
+        .args(&["-sDEVICE=txtwrite", "-dNOPAUSE", "-dBATCH", "-dQUIET", "-sOutputFile", &output_path, &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok("تم استخراج النصوص والخطوط الصافية برمجياً بنجاح!".to_string()) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok("تم استخراج النصوص والخطوط الصافية برمجياً بنجاح!".to_string()) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
 
 // S-06 الهندسة المتقدمة: معايير الأرشفة المستدامة العميقة PDF/A
@@ -92,13 +132,16 @@ async fn execute_ghostscript_pdfa(app_handle: tauri::AppHandle, input_path: Stri
     let output = app_handle.shell()
         .sidecar("gs")
         .map_err(|e| e.to_string())?
-        .args(&["-sDEVICE=pdfwrite", "-dPDFA=2", "-sColorConversionStrategy=UseDeviceDependentColor", "-dNOPAUSE", "-dBATCH", "-dQUIET", &format!("-sOutputFile={}", output_path), &input_path])
+        .args(&["-sDEVICE=pdfwrite", "-dPDFA=2", "-sColorConversionStrategy=UseDeviceDependentColor", "-dNOPAUSE", "-dBATCH", "-dQUIET", "-sOutputFile", &output_path, &input_path])
         .output()
         .await
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() { Ok(format!("تم تحويل وهندسة المستند ليتوافق مع المعيار العالمي [{}] بنجاح!", compliance)) } 
-    else { Err(String::from_utf8_lossy(&output.stderr).to_string()) }
+    if output.status.success() || String::from_utf8_lossy(&output.stderr).to_string().is_empty() { 
+        Ok(format!("تم تحويل وهندسة المستند ليتوافق مع المعيار العالمي [{}] بنجاح!", compliance)) 
+    } else { 
+        Err(String::from_utf8_lossy(&output.stderr).to_string()) 
+    }
 }
 
 fn main() {

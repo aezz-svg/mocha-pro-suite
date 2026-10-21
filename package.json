@@ -12,6 +12,7 @@
     "@base-ui/react": "^1.5.0",
     "@pdfsmaller/pdf-encrypt": "^1.2.0",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
     "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
