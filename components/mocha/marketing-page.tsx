@@ -6,6 +6,7 @@ import { SiteControl, localSiteSettings } from './site-control'
 
 const REPOSITORY = 'aezz-svg/mocha-pro-suite'
 const RELEASES_URL = 'https://github.com/aezz-svg/mocha-pro-suite/releases/latest'
+const WINDOWS_DOWNLOAD_URL = `${RELEASES_URL}/download/MochaPdfOptimizer_0.1.0_x64-setup.exe`
 const LATEST_RELEASE_API = 'https://api.github.com/repos/' + REPOSITORY + '/releases/latest'
 
 type Release = {
@@ -47,7 +48,7 @@ export function MarketingPage() {
     setSettings({ phone: current.phone, brandName: current.brandName || 'MOCHA.PRO', greeting: current.greeting, contacts: current.contacts, siteEnabled: current.siteEnabled })
   }, [checkUpdates])
 
-  const releaseUrl = RELEASES_URL
+  const releaseUrl = release?.html_url || RELEASES_URL
 
   if (!settings.siteEnabled) return <main className="grid min-h-screen place-items-center bg-[#050507] p-6 text-center text-white"><div><h1 className="text-2xl font-bold">الموقع متوقف مؤقتاً</h1><p className="mt-3 text-sm text-white/60">عدّل إعداد الموقع من لوحة المدير على هذا الجهاز لإظهاره مجدداً.</p><div className="mt-5 flex justify-center"><SiteControl marketing /></div></div></main>
 
@@ -75,7 +76,7 @@ export function MarketingPage() {
           Mocha Pro تطبيق سطح مكتب يستخدم Ghostscript على جهازك. نزّل آخر إصدار من GitHub Releases، أو راجع سجل التحديثات قبل التثبيت.
         </p>
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <a href={RELEASES_URL} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 font-semibold text-black transition hover:bg-amber-300">
+          <a href={WINDOWS_DOWNLOAD_URL} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 font-semibold text-black transition hover:bg-amber-300">
             <Download className="size-4" aria-hidden />
             فتح أحدث إصدار من Windows
           </a>
@@ -133,7 +134,7 @@ export function MarketingPage() {
               <h3 className="mt-4 text-lg font-semibold">{release.name || release.tag_name}</h3>
               {release.body && <p className="mt-2 whitespace-pre-line text-sm leading-7 text-white/55">{release.body}</p>}
               <div className="mt-5 flex flex-wrap gap-3">
-                <a href={RELEASES_URL} className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-black hover:bg-amber-300">
+                <a href={WINDOWS_DOWNLOAD_URL} className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-black hover:bg-amber-300">
                   <Download className="size-4" aria-hidden /> فتح أحدث إصدار من Windows
                 </a>
                 <a href={releaseUrl} className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2.5 text-sm text-white/75 hover:text-white">
