@@ -1,41 +1,13 @@
 'use client'
-
-import { useMocha } from '@/components/mocha/mocha-provider'
-
+import { useMocha } from './mocha-provider'
 export function MochaGlobalStatus() {
   const { busyOp, uploadProgress, timeRemaining, lastRun } = useMocha()
-
-  // إذا لم تكن هناك عملية جارية ولم ينتهي التشغيل للتو، لا نقوم بالعرض
-  if (!busyOp && !uploadProgress) return null
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 w-80 bg-slate-900/95 backdrop-blur border border-slate-700/80 rounded-2xl p-4 shadow-2xl text-white space-y-3 animate-fade-in">
-      {/* الحالة الأولى: عملية الرفع والاستدعاء السحابي */}
-      <div className="flex justify-between items-center text-sm font-semibold">
-        <span className="text-blue-400 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-          {busyOp ? `جاري معالجة: ${busyOp}` : 'اكتملت العملية'}
-        </span>
-        <span className="text-emerald-400 font-mono font-bold">{uploadProgress}%</span>
-      </div>
-
-      {/* شريط التقدم المرئي (Progress Bar) */}
-      <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
-        <div 
-          className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full transition-all duration-300 ease-out"
-          style={{ width: `${uploadProgress}%` }}
-        />
-      </div>
-
-      {/* الحالة الثانية والثالثة: الوقت التقديري للمعالجة وجهوزية التحميل */}
-      <div className="flex justify-between items-center text-xs text-slate-400 pt-1 border-t border-slate-800">
-        <span>{timeRemaining}</span>
-        {lastRun && (
-          <span className="text-emerald-400 font-mono">
-            {Math.round(lastRun.durationMs)}ms ⚡
-          </span>
-        )}
-      </div>
-    </div>
-  )
+  if (!busyOp && !(lastRun && uploadProgress === 100)) return null
+  const done = !busyOp && Boolean(lastRun) && uploadProgress === 100
+  return <div role="status" aria-live="polite" className="fixed bottom-4 end-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-white/10 bg-slate-950/95 p-4 text-white shadow-2xl backdrop-blur">
+    <div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">{busyOp ? `جارٍ تنفيذ ${busyOp} محلياً` : 'اكتملت العملية'}</span><span className="font-mono text-signal">{done ? '100%' : 'جارٍ التنفيذ'}</span></div>
+    <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full bg-gradient-to-r from-neon to-signal transition-all ${busyOp ? 'w-1/3 animate-pulse' : 'w-full'}`} /></div>
+    <div className="mt-2 flex justify-between border-t border-white/10 pt-2 text-xs text-white/50"><span>{timeRemaining}</span>{lastRun && <span dir="ltr">{lastRun.durationMs}ms</span>}</div>
+  </div>
 }
+

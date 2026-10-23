@@ -1,4 +1,3 @@
-
 mod pdf_commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -74,6 +73,9 @@ pub fn run() {
             pdf_commands::ocr_pdf,
             pdf_commands::compare_pdfs,
             pdf_commands::get_pdf_file_info,
+            pdf_commands::copy_pdf_file,
+            pdf_commands::render_pdf_page_thumbnail,
+            pdf_commands::reorder_pdf_pages,
             pdf_commands::optimize_pdf_fonts,
             pdf_commands::optimize_pdf_images,
             pdf_commands::remove_pdf_annotations,
@@ -83,3 +85,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("Failed to run MochaPdfOptimizer");
 }
+

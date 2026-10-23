@@ -1,7 +1,7 @@
 'use client'
 
 import { Brush, Highlighter, PenLine, Square, StickyNote, Strikethrough, Trash2, Underline } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useMocha } from '../mocha-provider'
 import { ActionButton, Field, GlassPanel, SectionTitle, TextInput } from '../primitives'
@@ -37,6 +37,10 @@ export function ReviewSuite() {
   const [noteText, setNoteText] = useState('')
   const [author, setAuthor] = useState('Mocha Reviewer')
   const [annotations, setAnnotations] = useState<Annotation[]>([])
+  const [startupMessage, setStartupMessage] = useState('')
+  useEffect(() => {
+    try { setStartupMessage((JSON.parse(localStorage.getItem('mocha-pro-admin-settings-v1') || '{}') as {startupMessage?: string}).startupMessage || '') } catch { /* defaults */ }
+  }, [])
   const maxPage = Math.max(1, info?.pages ?? 1)
 
   function placeAnnotation(e: React.MouseEvent<HTMLDivElement>) {
@@ -62,7 +66,13 @@ export function ReviewSuite() {
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <GlassPanel className="flex flex-col gap-4 p-5 lg:col-span-2">
-        <SectionTitle icon={Brush} title="أدوات المراجعة والترميز" subtitle="اختر أداة ثم اضغط على الصفحة لوضعها" />
+        <SectionTitle icon={Brush} title="معاينة أدوات المراجعة والترميز" subtitle="اختر أداة ثم اضغط على الصفحة لوضعها" />
+        <Field label="رسالة تظهر بعد اكتمال المعالجة بخمس ثوانٍ" htmlFor="review-startup-message">
+          <TextInput id="review-startup-message" value={startupMessage} placeholder="اكتب رسالة تنبيه للمستخدم" onChange={event => {
+            const value = event.target.value; setStartupMessage(value)
+            try { const config = JSON.parse(localStorage.getItem('mocha-pro-admin-settings-v1') || '{}'); localStorage.setItem('mocha-pro-admin-settings-v1', JSON.stringify({...config, startupMessage: value})) } catch { /* administrator settings will remain available */ }
+          }} />
+        </Field>
         <div role="radiogroup" aria-label="أداة الترميز" className="grid grid-cols-3 gap-2">
           {TOOLS.map(({ id, label, icon: Icon }) => (
             <button
@@ -125,23 +135,8 @@ export function ReviewSuite() {
           <ActionButton variant="ghost" icon={Trash2} onClick={() => setAnnotations([])} disabled={annotations.length === 0}>
             مسح الكل
           </ActionButton>
-          {/* 🔥 ربط زر تطبيق الترميزات الفعلي بنظام كود السيرفر وتمرير النصوص */}
-          <ActionButton
-            op="review"
-            icon={Highlighter}
-            onClick={() => {
-              if (annotations.length === 0) return log('error', 'أضف ترميزاً واحداً على الأقل من اللوحة قبل الحفظ الفعلي.')
-              run('annotate_file', `تطبيق ${annotations.length} ترميز مراجعة حقيقي`, {
-                settings: {
-                  reviewText: annotations.map(a => a.text || TOOLS.find(t => t.id === a.type)?.label).join(' | '),
-                  reviewerName: author,
-                  targetPages: [page - 1]
-                },
-              })
-            }}
-          >
-            تطبيق الترميزات
-          </ActionButton>
+          {/* 🔥 ربط زر تطبيق الترميزات (يتطلب دعم المحرك) الفعلي بنظام كود السيرفر وتمرير النصوص */}
+          <ActionButton op="review" disabled title="تطبيق الترميزات على PDF غير مدعوم بعد" icon={Highlighter}>تطبيق الترميزات · غير متاح</ActionButton>
         </div>
       </GlassPanel>
 
@@ -155,7 +150,7 @@ export function ReviewSuite() {
         <div className="flex justify-center rounded-xl border border-white/[0.06] bg-black/50 p-4">
           <div
             role="application"
-            aria-label="لوحة الترميز — اضغط لإضافة الأداة المحددة"
+            aria-label="لوحة الترميز — معاينة شكل الترميز فقط؛ لا يغير ملف PDF"
             onClick={placeAnnotation}
             className="relative aspect-[1/1.414] w-full max-w-sm cursor-crosshair overflow-hidden rounded-md bg-white/[0.04] ring-1 ring-white/10"
           >
@@ -216,3 +211,9 @@ function AnnotationMark({ annotation: a }: { annotation: Annotation }) {
       return null
   }
 }
+
+
+
+
+
+

@@ -1,7 +1,7 @@
 'use client'
 
 import { Cpu, FolderOpen, Highlighter, LayoutGrid, ScanText, ShieldCheck } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ContentSuite } from './suites/content-suite'
 import { EngineeringSuite } from './suites/engineering-suite'
@@ -21,6 +21,8 @@ const SUITES = [
 
 export function SuiteTabs() {
   const [active, setActive] = useState<(typeof SUITES)[number]['id']>('file')
+  const [locale, setLocale] = useState('ar')
+  useEffect(() => { const value = localStorage.getItem('mocha-pro-locale'); if (value) setLocale(value) }, [])
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const current = SUITES.find((s) => s.id === active)!
 
@@ -41,7 +43,7 @@ export function SuiteTabs() {
             CONTROL SUITES
           </p>
           <h2 id="suites-title" className="mt-1 text-xl font-bold text-white sm:text-2xl">
-            الأجنحة التشغيلية
+            {locale === 'ar' ? 'الأجنحة التشغيلية' : 'Operational suites'}
           </h2>
         </div>
         <p className="font-mono text-xs text-muted-foreground" dir="ltr">
@@ -92,7 +94,7 @@ export function SuiteTabs() {
                   S-{suite.code}
                 </span>
                 <span className={cn('block truncate text-xs font-semibold', selected ? 'text-white' : 'text-white/70')}>
-                  {suite.label}
+                  {locale === 'ar' ? suite.label : suite.en}
                 </span>
               </span>
               {selected && <span className="absolute inset-x-3 bottom-0 h-px bg-gradient-to-l from-transparent via-neon to-transparent" />}

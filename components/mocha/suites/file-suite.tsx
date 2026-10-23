@@ -60,7 +60,7 @@ export function FileSuite() {
 
         <div className="h-px bg-white/[0.06]" />
 
-        <SectionTitle icon={FileOutput} title="خيارات التصدير" subtitle="تحويل المستند إلى صيغة أخرى" />
+        <SectionTitle icon={FileOutput} title="خيارات التصدير" subtitle="استخراج TXT متاح؛ الصيغ الأخرى تتطلب محركات إضافية" />
         <Field label="صيغة التصدير" htmlFor="export-format">
           <SelectInput id="export-format" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
             <option value="docx">Word (DOCX)</option>
@@ -80,7 +80,7 @@ export function FileSuite() {
       </GlassPanel>
 
       <GlassPanel className="flex flex-col gap-5 p-5">
-        <SectionTitle icon={Search} title="البحث والملاحة" subtitle="بحث نصي شامل داخل صفحات المستند" />
+        <SectionTitle icon={Search} title="البحث والملاحة" subtitle="البحث النصي يحتاج إضافة محرك استخراج/بحث محلي" />
         <form onSubmit={handleSearch} className="flex flex-col gap-4">
           <div className="flex gap-2">
             <label htmlFor="doc-search" className="sr-only">
@@ -93,7 +93,7 @@ export function FileSuite() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <ActionButton op="search" icon={Search} type="submit" className="shrink-0">
+            <ActionButton op="search" icon={Search} type="submit" className="shrink-0" disabled title="محرك البحث داخل الصفحات غير مضمن حالياً">
               بحث
             </ActionButton>
           </div>
@@ -124,7 +124,7 @@ export function FileSuite() {
       <MetadataInspector />
 
       <GlassPanel className="flex flex-col gap-4 p-5">
-        <SectionTitle icon={TerminalSquare} title="مخرجات المحرك الحية" subtitle="بث مباشر لكل عملية تُرسل إلى FastAPI" />
+        <SectionTitle icon={TerminalSquare} title="مخرجات المحرك الحية" subtitle="سجل عمليات المعالجة المحلية" />
         <EngineTerminal className="h-80" />
       </GlassPanel>
     </div>
@@ -161,9 +161,9 @@ function MetadataInspector() {
       <SectionTitle
         icon={ScanSearch}
         title="مفتش البيانات الوصفية"
-        subtitle="قراءة محلية فورية + فحص عميق عبر المحرك"
+        subtitle="تعرض المعلومات المحلية المتاحة؛ الفحص العميق غير منفذ"
         action={
-          <ActionButton op="metadata" variant="ghost" icon={ScanSearch} onClick={deepScan} className="h-8 px-3 text-xs">
+          <ActionButton op="metadata" variant="ghost" icon={ScanSearch} disabled title="غير مدعوم في المحرك الحالي" onClick={deepScan} className="h-8 px-3 text-xs">
             فحص عميق
           </ActionButton>
         }
@@ -187,3 +187,7 @@ function MetadataInspector() {
     </GlassPanel>
   )
 }
+
+
+
+

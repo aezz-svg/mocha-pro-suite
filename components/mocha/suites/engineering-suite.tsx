@@ -78,7 +78,7 @@ export function EngineeringSuite() {
             <SelectInput id="color-mode" value={colorMode} onChange={(e) => setColorMode(e.target.value as ColorMode)}>
               <option value="RGB">RGB — ألوان كاملة</option>
               <option value="Grayscale">Grayscale — تدرّج رمادي</option>
-              <option value="Monochrome">Monochrome — أحادي اللون</option>
+              <option value="Monochrome" disabled>Monochrome — غير مدعوم بعد</option>
             </SelectInput>
           </Field>
           <Field label="مستوى الضغط">
@@ -97,9 +97,9 @@ export function EngineeringSuite() {
 
         <fieldset className="grid gap-3 rounded-lg border border-white/[0.06] bg-black/40 p-4 sm:grid-cols-3">
           <legend className="px-1 text-xs text-white/70">التنظيف والتحسين</legend>
-          <Checkbox checked={stripMetadata} onChange={setStripMetadata} label="تنظيف البيانات الوصفية" />
-          <Checkbox checked={removeJs} onChange={setRemoveJs} label="إزالة JavaScript" />
-          <Checkbox checked={linearize} onChange={setLinearize} label="تحسين للويب" />
+          <Checkbox checked={stripMetadata} onChange={setStripMetadata} label="تنظيف البيانات الوصفية (غير مفعّل)" disabled />
+          <Checkbox checked={removeJs} onChange={setRemoveJs} label="إزالة JavaScript (غير مفعّل)" disabled />
+          <Checkbox checked={linearize} onChange={setLinearize} label="تحسين للويب غير مفعّل حالياً" disabled />
         </fieldset>
 
         <div className="mt-auto grid gap-2 sm:grid-cols-2">
@@ -108,10 +108,10 @@ export function EngineeringSuite() {
             تنفيذ الضغط
           </ActionButton>
           <ActionButton
-            op="sanitize"
+            op="sanitize" disabled title="تنظيف PDF غير مدعوم في المحرك الحالي"
             variant="ghost"
             icon={Sparkles}
-            onClick={() => run('compress', 'تنظيف البيانات الوصفية', { settings: { ...advancedSettings, compressionLevel: 'low' } })}
+            onClick={() => run('sanitize', 'تنظيف البيانات الوصفية غير مدعوم حالياً', { settings: { ...advancedSettings, compressionLevel: 'low' } })}
           >
             تنفيذ التنظيف الفعلي
           </ActionButton>
@@ -147,7 +147,7 @@ export function EngineeringSuite() {
           </Field>
           {/* 🔥 ربط زر الأرشفة الدولي وتمرير معيار الـ PDF/A الصارم برمجياً إلى السيرفر */}
           <ActionButton
-            op="pdfa"
+            op="pdfa" disabled title="PDF/A غير مدعوم في المحرك الحالي"
             variant="signal"
             icon={Archive}
             className="mt-auto"
@@ -160,3 +160,7 @@ export function EngineeringSuite() {
     </div>
   )
 }
+
+
+
+

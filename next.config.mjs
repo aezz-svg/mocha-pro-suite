@@ -1,12 +1,18 @@
 /** @type {import('next').NextConfig} */
+const isTauriBuild = process.env.MOCHA_TAURI_BUILD === '1'
+
 const nextConfig = {
+  ...(isTauriBuild ? { output: 'export', distDir: 'out' } : {}),
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
   },
-  async headers() {
+  experimental: {
+    agentUpgrade: 'security',
+  },
+  ...(!isTauriBuild ? { async headers() {
     return [
       {
         source: '/:path*',
@@ -24,7 +30,7 @@ const nextConfig = {
         ],
       },
     ]
-  },
+  } } : {}),
 }
 
 export default nextConfig;

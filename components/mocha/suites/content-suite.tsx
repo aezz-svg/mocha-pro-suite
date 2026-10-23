@@ -29,9 +29,7 @@ export function ContentSuite() {
       },
       autoDownload: false,
     })
-    if (result && result.blob) {
-      setText("تم تفعيل ميزة استخراج النص من المحتوى السحابي الفعلي للمستند عبر نظام Mocha بنجاح.")
-    }
+    if (result?.kind === 'file') setText(result.path)
   }
 
   async function extractTables() {
@@ -42,12 +40,7 @@ export function ContentSuite() {
       }, 
       autoDownload: false 
     })
-    if (result) {
-      setTables([
-        { page: 1, rows: [["المعرف", "اسم المستند", "حالة المعالجة"], ["1", "تكليف اقتصاد هندسي", "مكتمل فعلياً"]] }
-      ])
-      setActiveTable(0)
-    }
+    if (result?.kind === 'file') setTables([])
   }
 
   async function copyText() {
@@ -61,7 +54,7 @@ export function ContentSuite() {
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <GlassPanel className="flex flex-col gap-4 p-5 lg:col-span-2">
-        <SectionTitle icon={ScanText} title="استخراج النص و OCR" subtitle="قراءة المحتوى النصي والممسوح ضوئياً" />
+        <SectionTitle icon={ScanText} title="استخراج النص و OCR" subtitle="استخراج النص مدعوم؛ OCR يحتاج Tesseract غير المضمّن" />
         <Toggle
           checked={ocr}
           onChange={setOcr}
@@ -82,49 +75,26 @@ export function ContentSuite() {
         
         {/* حماية الأزرار بقفل إلزامي إذا لم يكتمل الرفع */}
         <div className="grid grid-cols-2 gap-2">
-          <ActionButton 
-            op={ocr ? 'ocr' : 'extract_text'} 
-            icon={ocr ? ScanLine : Type} 
-            onClick={extractText}
-            disabled={!isReadyForProcessing || busyOp !== null}
-          >
+          <ActionButton op={ocr ? 'ocr' : 'extract_text'} icon={ocr ? ScanLine : Type} onClick={extractText} disabled={!isReadyForProcessing || busyOp !== null || ocr} title={ocr ? 'OCR يحتاج Tesseract غير المضمن' : undefined}>
             {ocr ? 'تشغيل OCR' : 'استخراج النص'}
           </ActionButton>
-          <ActionButton
-            op="pdfa"
-            variant="ghost"
-            icon={ScanLine}
-            disabled={!isReadyForProcessing || busyOp !== null}
-            onClick={() => run('pdfa', 'إنشاء PDF قابل للبحث', { settings: { pdfaCompliance: 'PDF/A-2b', cleanMetadata: true } })}
-          >
-            PDF قابل للبحث
+          <ActionButton op="pdfa" variant="ghost" icon={ScanLine} disabled title="PDF/A غير مدعوم حالياً" onClick={() => run('pdfa', 'PDF/A غير مدعوم', { settings: { pdfaCompliance: 'PDF/A-2b' } })}>
+            PDF قابل للبحث · غير متاح
           </ActionButton>
         </div>
 
         <div className="h-px bg-white/[0.06]" />
 
-        <SectionTitle icon={Table} title="استخراج الجداول" subtitle="تحويل الجداول إلى بيانات منظمة" />
+        <SectionTitle icon={Table} title="استخراج الجداول" subtitle="استخراج الجداول غير مدعوم في المحرك المحلي" />
         <Field label="الصفحات المستهدفة" htmlFor="table-pages" hint="all أو نطاق مثل 2-4">
           <TextInput id="table-pages" dir="ltr" value={tablePages} onChange={(e) => setTablePages(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-2">
-          <ActionButton 
-            op="convert_compliance" 
-            variant="signal" 
-            icon={Table} 
-            onClick={extractTables}
-            disabled={!isReadyForProcessing || busyOp !== null}
-          >
-            عرض الجداول
+          <ActionButton op="convert_compliance" variant="signal" icon={Table} disabled title="استخراج الجداول غير متاح في المحرك الحالي" onClick={extractTables}>
+            عرض الجداول · غير متاح
           </ActionButton>
-          <ActionButton
-            op="pdfa"
-            variant="ghost"
-            icon={Table}
-            disabled={!isReadyForProcessing || busyOp !== null}
-            onClick={() => run('pdfa', 'تصدير الجداول القياسية', { settings: { pdfaCompliance: 'PDF/A-3b' } })}
-          >
-            تصدير CSV
+          <ActionButton op="export_tables" variant="ghost" icon={ScanLine} disabled title="تصدير CSV يتطلب محرك الجداول" onClick={() => run('export_tables', 'تصدير CSV غير مدعوم')}>
+            تصدير CSV · غير متاح
           </ActionButton>
         </div>
       </GlassPanel>
@@ -132,7 +102,7 @@ export function ContentSuite() {
       <div className="flex flex-col gap-4 lg:col-span-3">
         <GlassPanel className="flex flex-col p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">النص المستخرج</h3>
+            <h3 className="text-sm font-semibold text-white">مسار ملف TXT المستخرج</h3>
             <button
               type="button"
               onClick={copyText}
@@ -140,7 +110,7 @@ export function ContentSuite() {
               className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 hover:border-neon/50 disabled:opacity-40"
             >
               {copied ? <Check className="size-3 text-signal" /> : <Copy className="size-3" />}
-              {copied ? 'تم النسخ' : 'نسخ'}
+              {copied ? 'تم النسخ' : 'نسخ المسار'}
             </button>
           </div>
           <label htmlFor="extracted-text" className="sr-only">
@@ -150,7 +120,7 @@ export function ContentSuite() {
             id="extracted-text"
             readOnly
             value={text}
-            placeholder={!isReadyForProcessing ? "يرجى الانتظار لاكتمال رفع الملف واستقرار الخزنة..." : "سيظهر النص المستخرج من المحرك هنا…"}
+            placeholder={!isReadyForProcessing ? "اختر مستند PDF" : "بعد الاستخراج سيظهر هنا مسار TXT المحفوظ"}
             className="no-scrollbar h-52 resize-none rounded-lg border border-white/[0.06] bg-black/50 p-3 font-mono text-xs leading-relaxed text-white/85 placeholder:text-white/25 focus:outline-none"
           />
         </GlassPanel>
@@ -209,3 +179,9 @@ export function ContentSuite() {
     </div>
   )
 }
+
+
+
+
+
+

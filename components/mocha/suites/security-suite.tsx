@@ -44,7 +44,7 @@ function passwordStrength(pw: string) {
   return { bits, score }
 }
 
-const STRENGTH_LABELS = ['ضعيفة جداً', 'ضعيفة', 'متوسطة', 'قوية', 'سيادية · عسكرية']
+const STRENGTH_LABELS = ['ضعيفة جداً', 'ضعيفة', 'متوسطة', 'قوية', 'ممتازة']
 const STRENGTH_COLORS = ['bg-red-500', 'bg-orange-500', 'bg-gold', 'bg-neon', 'bg-signal']
 
 export function SecuritySuite() {
@@ -84,7 +84,7 @@ export function SecuritySuite() {
 
   // 🔥 دالة الحجب والحذف الدائم للبيانات الحساسة
   function handleRedaction() {
-    run('encrypt', 'تنفيذ الحجب الأمني الدائم للمعلومات الحساسة', {
+    run('redact', 'الحجب الدائم غير مدعوم في المحرك المحلي', {
       settings: {
         removeJs: true,
         cleanMetadata: true,
@@ -96,7 +96,7 @@ export function SecuritySuite() {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <GlassPanel className="flex flex-col gap-4 p-5">
-        <SectionTitle icon={Lock} title="تشفير AES-256" subtitle="حماية المستند بكلمة مرور" />
+        <SectionTitle icon={Lock} title="تشفير PDF · 128-bit" subtitle="حماية المستند بكلمة مرور" />
         <Field label="كلمة مرور الفتح" htmlFor="enc-pw">
           <PasswordInput id="enc-pw" value={userPw} onChange={setUserPw} placeholder="••••••••" />
         </Field>
@@ -128,8 +128,8 @@ export function SecuritySuite() {
         <fieldset className="flex flex-col gap-2 rounded-lg border border-white/[0.06] bg-black/40 p-3">
           <legend className="px-1 text-xs text-white/70">الصلاحيات</legend>
           <Checkbox checked={allowPrint} onChange={setAllowPrint} label="السماح بالطباعة" />
-          <Checkbox checked={allowCopy} onChange={setAllowCopy} label="السماح بنسخ المحتوى" />
-          <Checkbox checked={allowModify} onChange={setAllowModify} label="السماح بالتعديل" />
+          <Checkbox checked={allowCopy} onChange={setAllowCopy} label="السماح بنسخ المحتوى (غير مدعوم)" disabled />
+          <Checkbox checked={allowModify} onChange={setAllowModify} label="السماح بالتعديل (غير مدعوم)" disabled />
         </fieldset>
         <ActionButton op="encrypt" icon={Lock} className="mt-auto" onClick={encrypt}>
           تشفير المستند
@@ -150,13 +150,10 @@ export function SecuritySuite() {
         <Field label="كلمة المرور الحالية" htmlFor="dec-pw">
           <PasswordInput id="dec-pw" value={decryptPw} onChange={setDecryptPw} />
         </Field>
-        <ActionButton
-          op="encrypt"
-          variant="signal"
-          icon={LockOpen}
+        <ActionButton op="decrypt" variant="signal" disabled title="فك التشفير غير مدعوم بعد" icon={LockOpen}
           onClick={() => {
             if (!decryptPw) return log('error', 'أدخل كلمة المرور لفك التشفير الحقيقي.')
-            run('encrypt', 'طلب فك تشفير وفحص حزم المستند الأصلي', { settings: { userPassword: decryptPw } })
+            run('decrypt', 'فك التشفير غير مدعوم في المحرك المحلي', { settings: { userPassword: decryptPw } })
           }}
         >
           فك التشفير
@@ -170,11 +167,11 @@ export function SecuritySuite() {
         </p>
         <div className="mt-auto grid grid-cols-2 gap-2">
           {/* 🔥 ربط التسطيح الحقيقي لحقول النماذج داخل بايتات الملف السحابي لإقفال المدخلات */}
-          <ActionButton op="encrypt" variant="ghost" icon={Layers} onClick={() => run('encrypt', 'تسطيح حقول النماذج التفاعلية', { settings: { allowModify: false, cleanMetadata: true } })}>
+          <ActionButton op="flatten_forms" variant="ghost" disabled title="تسطيح النماذج غير مدعوم" icon={Layers} onClick={() => run('flatten_forms', 'تسطيح النماذج غير مدعوم في المحرك المحلي', { settings: { allowModify: false, cleanMetadata: true } })}>
             تسطيح النماذج
           </ActionButton>
           <ActionButton
-            op="pdfa"
+            op="pdfa" disabled title="PDF/A غير مدعوم في المحرك الحالي"
             variant="ghost"
             icon={Layers}
             onClick={() => run('pdfa', 'تصدير وحفظ هيكل النماذج بصيغة أرشيف قياسي', { settings: { pdfaCompliance: 'PDF/A-2b' } })}
@@ -193,10 +190,17 @@ export function SecuritySuite() {
         <Field label="عبارات أو كلمات مخصصة للحجب" htmlFor="custom-terms">
           <TextInput id="custom-terms" placeholder="مثال: سري للغاية، خاص، اسم العميل" value={customTerms} onChange={(e) => setCustomTerms(e.target.value)} />
         </Field>
-        <ActionButton op="encrypt" variant="ghost" icon={Eraser} className="mt-auto" onClick={handleRedaction}>
+        <ActionButton op="redact" variant="ghost" disabled title="الحجب الفعلي غير مدعوم؛ لم يتم إخفاء أي محتوى" icon={Eraser} className="mt-auto" onClick={handleRedaction}>
           تنفيذ الحجب الدائم
         </ActionButton>
       </GlassPanel>
     </div>
   )
 }
+
+
+
+
+
+
+

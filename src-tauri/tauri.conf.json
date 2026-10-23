@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run tauri:frontend"
   },
   "app": {
     "windows": [
@@ -30,17 +30,16 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
+      "icons/icon.png",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
-    },
     "externalBin": [
       "binaries/gs"
-    ]
+    ],
+    "resources": {
+      "binaries/gsdll64.dll": "gsdll64.dll"
+    }
   },
-
   "plugins": {
     "shell": {}
   }

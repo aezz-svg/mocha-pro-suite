@@ -3,6 +3,8 @@
 import { Coffee, Fingerprint, ShieldCheck, Zap } from 'lucide-react'
 import Image from 'next/image'
 import { AmbientAudioToggle } from './ambient-audio'
+import { readLocalGreeting } from './site-control'
+import { useEffect, useState } from 'react'
 
 const pillars = [
   { icon: ShieldCheck, label: 'AES-256 سيادي' },
@@ -11,16 +13,14 @@ const pillars = [
 ]
 
 export function HeroBanner() {
+  const [greeting, setGreeting] = useState('أهلاً بك في منصة العز للقمة السيادية')
+  const [background, setBackground] = useState(0)
+  useEffect(() => setGreeting(readLocalGreeting('أهلاً بك في منصة العز للقمة السيادية')), [])
+  useEffect(() => { const timer = window.setInterval(() => setBackground(value => (value + 1) % 3), 5000); return () => window.clearInterval(timer) }, [])
+  const backgrounds = ['/images/coffee-hero.png', '/images/yemeni-coffee-tree.svg', '/images/coffee-branch.svg']
   return (
     <section id="top" aria-labelledby="hero-title" className="relative isolate overflow-hidden">
-      <Image
-        src="/images/coffee-hero.png"
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="-z-20 object-cover object-center opacity-70"
-      />
+      {backgrounds.map((src, index) => <Image key={src} src={src} alt="" fill priority={index === 0} sizes="100vw" className={`-z-20 object-cover object-center transition-opacity duration-[1200ms] ${background === index ? 'opacity-60' : 'opacity-0'}`} />)}
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-obsidian/70 via-obsidian/80 to-obsidian" />
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_10%,#030305_75%)]" />
       <div className="pointer-events-none absolute inset-0 -z-10 bg-grid opacity-60 [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_70%)]" />
@@ -51,7 +51,7 @@ export function HeroBanner() {
 
         <p className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-amber-200/90">
           <Coffee className="size-4 text-gold" aria-hidden />
-          أهلاً بك يا عزمي في القمة السيادية
+          {greeting}
         </p>
 
         <h1 id="hero-title" className="text-balance text-4xl font-bold leading-tight tracking-tight text-white sm:text-6xl">
@@ -65,7 +65,7 @@ export function HeroBanner() {
         </h1>
 
         <p className="mt-5 max-w-2xl text-pretty text-sm leading-relaxed text-white/70 sm:text-base">
-          إرث القهوة الداكنة يلتقي بالهندسة السيادية: نظّم، حرّر، راجع، شفّر، وأرشف مستنداتك عبر محرك سحابي محلي لا يغادر الخزنة أبداً.
+          إرث القهوة الداكنة يلتقي بالهندسة السيادية: نظّم، حرّر، راجع، شفّر، وأرشف مستنداتك عبر محرك محلي لا يغادر الخزنة أبداً.
         </p>
 
         <ul className="mt-8 flex flex-wrap justify-center gap-2 sm:gap-3">
@@ -83,3 +83,4 @@ export function HeroBanner() {
     </section>
   )
 }
+

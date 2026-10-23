@@ -249,24 +249,13 @@ export function Segmented<T extends string | number>({
   )
 }
 
-export function Checkbox({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: (value: boolean) => void
-  label: string
-}) {
+export function Checkbox({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2.5 text-sm text-white/85">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="size-4 cursor-pointer rounded border-white/20 bg-black accent-neon"
-      />
+    <label className={cn('flex items-center gap-2.5 text-sm text-white/85', disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="size-4 rounded border-white/20 bg-black accent-neon disabled:cursor-not-allowed" />
       {label}
     </label>
   )
 }
+
+

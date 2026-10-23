@@ -156,7 +156,6 @@ async function processPdfBuffer(
   // حفظ المستند أولاً بشكل منفصل، ثم فحص الصلاحيات
   let pdfBytes = await currentDoc.save({
     useObjectStreams: false,        // تفعيل التوافق الكامل مع كافة الطابعات
-    addMissingPageBytestream: true
   });
 
   const security = (currentDoc as any)._physicalSecurity;
@@ -240,6 +239,7 @@ export async function POST(req: NextRequest) {
         });
 
         const newFileId = createRes.data.id;
+        if (!newFileId) throw new Error("تعذر الحصول على معرّف الملف الناتج من Google Drive.");
 
         try {
           await googleDrive.permissions.create({
@@ -345,3 +345,4 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

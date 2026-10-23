@@ -1,26 +1,29 @@
 'use client'
 
 import { ArrowDownUp, LayoutGrid, Merge, Scissors } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
 import { parsePageRanges } from '@/lib/pdf-inspect'
 import { cn } from '@/lib/utils'
 import { useMocha } from '../mocha-provider'
 import { ActionButton, Field, GlassPanel, SectionTitle, Segmented, TextInput } from '../primitives'
 
-const MAX_THUMBS = 120
+type MergeFile = { name: string; path: string }
 
 export function PagesSuite() {
-  const { info, run, log } = useMocha()
+  const { info, file, run, log } = useMocha()
   const pageCount = info?.pages ?? 0
   const [selected, setSelected] = useState<number[]>([])
   const [rangeInput, setRangeInput] = useState('1-3, 5')
   const [angle, setAngle] = useState<90 | 180 | 270>(90)
   const [rotatePreview, setRotatePreview] = useState<Record<number, number>>({})
-  const [mergeFiles, setMergeFiles] = useState<File[]>([])
-  const mergeInputRef = useRef<HTMLInputElement>(null)
+  const [mergeFiles, setMergeFiles] = useState<MergeFile[]>([])
+  const [dragMergePath, setDragMergePath] = useState<string | null>(null)
+  useEffect(() => { if (file?.path) setMergeFiles([{path:file.path,name:file.name}]) }, [file?.path, file?.name])
 
   const parsedRange = useMemo(() => parsePageRanges(rangeInput, pageCount), [rangeInput, pageCount])
-  const thumbs = useMemo(() => Array.from({ length: Math.min(pageCount, MAX_THUMBS) }, (_, i) => i + 1), [pageCount])
+  const thumbs = useMemo(() => Array.from({ length: pageCount }, (_, i) => i + 1), [pageCount])
   const docKey = `${info?.name ?? ''}:${pageCount}`
   const [orderState, setOrderState] = useState<{ key: string; order: number[] }>({ key: '', order: [] })
   const order = orderState.key === docKey ? orderState.order : thumbs
@@ -44,23 +47,23 @@ export function PagesSuite() {
     setSelected((prev) => (prev.includes(page) ? prev.filter((p) => p !== page) : [...prev, page].sort((a, b) => a - b)))
   }
 
-  function moveMerge(index: number, dir: -1 | 1) {
-    setMergeFiles((prev) => {
-      const next = [...prev]
-      const target = index + dir
-      if (target < 0 || target >= next.length) return prev
-      ;[next[index], next[target]] = [next[target], next[index]]
-      return next
-    })
+  async function applyPageOrder() {
+    if (!file || !reordered) return
+    const result = await run('reorder_pages', 'حفظ ترتيب الصفحات الجديد', { settings: { pageOrder: order } })
+    if (result) {
+      log('success', 'تم حفظ ترتيب الصفحات في ملف PDF جديد؛ ظل الملف الأصلي دون تغيير.')
+      setOrder(thumbs)
+    }
   }
 
   async function handleRotate() {
     const pages = selected.length > 0 ? selected : thumbs
-    await run('rotate', `تدوير الصفحات ${angle}°`, {
+    const result = await run('rotate', `تدوير الصفحات ${angle}°`, {
       settings: { 
         targetPages: pages.map(p => p - 1)
       },
     })
+    if (!result) return
     setRotatePreview((prev) => {
       const next = { ...prev }
       pages.forEach((p) => (next[p] = ((next[p] ?? 0) + angle) % 360))
@@ -73,7 +76,7 @@ export function PagesSuite() {
       log('error', 'يرجى تحديد صفحة واحدة على الأقل من الشبكة لتنفيذ أمر التنظيم والحذف الفعلي.')
       return
     }
-    await run('organize_pages', 'تنظيم وحذف الصفحات غير المحددة', {
+    await run('delete_pages', 'حذف الصفحات غير المحددة', {
       settings: {
         targetPages: selected.map(p => p - 1)
       }
@@ -100,7 +103,7 @@ export function PagesSuite() {
           title="معاينة الصفحات"
           subtitle={
             pageCount
-              ? `${pageCount} صفحة · ${selected.length} محددة · اسحب الصفحات لإعادة ترتيبها${pageCount > MAX_THUMBS ? ` · عرض أول ${MAX_THUMBS}` : ''}`
+              ? `${pageCount} صفحة · ${selected.length} محددة · اسحب الصفحة المحددة إلى الموضع المطلوب ثم احفظ الترتيب`
               : 'ارفع ملفاً لعرض شبكة الصفحات'
           }
           action={
@@ -115,16 +118,7 @@ export function PagesSuite() {
                     >
                       استعادة الترتيب
                     </button>
-                    <ActionButton
-                      op="reorder"
-                      variant="ghost"
-                      icon={ArrowDownUp}
-                      className="h-7 border-gold/50 px-2.5 text-xs text-amber-200"
-                      disabled={pageCount > MAX_THUMBS}
-                      onClick={() => run('organize_pages', 'تطبيق إعادة ترتيب الصفحات الفعلي', { settings: { targetPages: order.map(p => p - 1) } })}
-                    >
-                      تطبيق الترتيب
-                    </ActionButton>
+                    <ActionButton op="reorder_pages" variant="ghost" icon={ArrowDownUp} disabled={!file || !reordered} onClick={applyPageOrder} title="ينشئ ملف PDF جديداً بترتيب الصفحات الحالي" className="h-7 border-gold/50 px-2.5 text-xs text-amber-200">حفظ الترتيب الجديد</ActionButton>
                   </>
                 )}
                 <button
@@ -202,9 +196,8 @@ export function PagesSuite() {
                       isSelected ? 'border-neon shadow-neon' : inRange ? 'border-gold/40 bg-gold/5' : 'border-white/10'
                     )}
                   >
-                    <div className="m-auto font-mono text-xs text-white/40 group-hover:text-white/70">
-                      P. {page}
-                    </div>
+                    <PageThumbnail path={file?.path} page={page} />
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/70 py-1 text-center font-mono text-[10px] text-white/70">P. {page}</span>
                   </button>
                 </li>
               )
@@ -222,8 +215,8 @@ export function PagesSuite() {
           <ActionButton op="extract" variant="signal" onClick={handleExtractRange}>
             استخراج النطاق
           </ActionButton>
-          <ActionButton op="organize" variant="ghost" onClick={handleOrganizePages}>
-            حذف غير المحدد
+          <ActionButton op="delete_pages" disabled title="حذف صفحات PDF غير مدعوم بعد" variant="ghost" onClick={handleOrganizePages}>
+            حذف غير المحدد · غير متاح
           </ActionButton>
         </GlassPanel>
 
@@ -231,7 +224,7 @@ export function PagesSuite() {
           <SectionTitle icon={LayoutGrid} title="تدوير الصفحات" subtitle="ضبط زاوية العرض" />
           <Segmented
             label="الزاوية"
-            value={angle}
+            value={String(angle)}
             onChange={(v) => setAngle(Number(v) as any)}
             options={[
               { value: '90', label: '90°' },
@@ -239,52 +232,32 @@ export function PagesSuite() {
               { value: '270', label: '270°' },
             ]}
           />
-          <ActionButton op="rotate" variant="signal" onClick={handleRotate} className="mt-auto">
+          <ActionButton op="rotate" disabled title="تدوير PDF غير مدعوم بعد" variant="signal" onClick={handleRotate} className="mt-auto">
             تدوير الصفحات النشطة
           </ActionButton>
         </GlassPanel>
 
         <GlassPanel className="flex flex-col gap-4 p-5">
           <SectionTitle icon={Merge} title="دمج الملفات" subtitle="إضافة مستندات أخرى للدمج" />
-          <input 
-            type="file" 
-            accept=".pdf" 
-            ref={mergeInputRef} 
-            className="hidden" 
-            onChange={(e) => {
-             const file = e.target.files?.[0];
-              if (f) setMergeFiles(prev => [...prev, f])
-            }} 
-          />
-          <button 
-            type="button" 
-            onClick={() => mergeInputRef.current?.click()} 
+          <button
+            type="button"
+            onClick={async () => {
+              const selected = await open({ multiple: true, directory: false, title: 'اختر ملفات PDF للدمج', filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+              const paths = Array.isArray(selected) ? selected : typeof selected === 'string' ? [selected] : []
+              const allPaths = file && !paths.includes(file.path) ? [file.path, ...paths] : paths
+              setMergeFiles(allPaths.map(path => ({ path, name: path.split(/[\\/]/).pop() || path })))
+            }}
             className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-white/10 bg-white/5 p-3 text-sm text-white/70 hover:bg-white/10 hover:text-white"
           >
-            إضافة مستند مدمج
+            اختيار ملفات PDF محلياً ({mergeFiles.length})
           </button>
-
-          {mergeFiles.length > 0 && (
-            <div className="flex flex-col gap-2 max-h-32 overflow-y-auto">
-              {mergeFiles.map((f, i) => (
-                <div key={i} className="flex items-center justify-between rounded bg-white/5 px-2.5 py-1.5 text-xs text-white">
-                  <span className="truncate">{f.name}</span>
-                  <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => moveMerge(i, -1)} className="p-0.5 hover:text-gold">↑</button>
-                    <button type="button" onClick={() => moveMerge(i, 1)} className="p-0.5 hover:text-gold">↓</button>
-                    <button type="button" onClick={() => setMergeFiles(p => p.filter((_, idx) => idx !== i))} className="p-0.5 text-red-400 hover:text-red-500">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
+          {mergeFiles.length > 0 && <ul className="max-h-32 space-y-1 overflow-y-auto text-xs text-white/65" aria-label="ترتيب ملفات الدمج">{mergeFiles.map((file,index) => <li key={file.path} draggable onDragStart={event=>{setDragMergePath(file.path);event.dataTransfer.effectAllowed='move'}} onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();if(!dragMergePath||dragMergePath===file.path)return;setMergeFiles(previous=>{const next=[...previous];const from=next.findIndex(item=>item.path===dragMergePath);const to=next.findIndex(item=>item.path===file.path);const [moved]=next.splice(from,1);next.splice(to,0,moved);return next});setDragMergePath(null)}} onDragEnd={()=>setDragMergePath(null)} className="cursor-grab truncate rounded border border-white/10 p-2 active:cursor-grabbing" dir="ltr" title="اسحب لإعادة ترتيب ملفات الدمج">{index+1}. {file.name}</li>)}</ul>}
           <ActionButton 
             op="merge" 
             variant="signal" 
             icon={Merge} 
             className="mt-auto" 
-            onClick={() => run('merge_files', 'دمج الملفات السحابية', { settings: { secondaryFileId: 'GOOGLE_DRIVE_SECONDARY_FILE_ID' } })}
+            onClick={() => run('merge_files', 'دمج ملفات PDF محلياً', { settings: { secondaryFilePaths: mergeFiles.map(file => file.path) } })}
           >
             تنفيذ الدمج الكامل
           </ActionButton>
@@ -293,3 +266,35 @@ export function PagesSuite() {
     </div>
   )
 }
+
+function PageThumbnail({ path, page }: { path?: string; page: number }) {
+  const [source, setSource] = useState('')
+  const [element, setElement] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!path || !element) return
+    let active = true
+    let objectUrl = ''
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return
+      observer.disconnect()
+      void invoke<number[]>('render_pdf_page_thumbnail', { inputPath: path, page }).then(bytes => {
+        if (!active) return
+        const png = new Uint8Array(bytes)
+        objectUrl = URL.createObjectURL(new Blob([png.buffer as ArrayBuffer], { type: 'image/png' }))
+        setSource(objectUrl)
+      }).catch(() => { /* keep the numbered placeholder if Ghostscript cannot render */ })
+    }, { rootMargin: '120px' })
+    observer.observe(element)
+    return () => { active = false; observer.disconnect(); if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [element, page, path])
+  return <div ref={setElement} className="absolute inset-0 overflow-hidden rounded-md bg-white/[0.04]">{source ? <img src={source} alt={`معاينة الصفحة ${page}`} className="size-full object-contain"/> : <span className="grid size-full place-items-center font-mono text-xs text-white/30">PDF</span>}</div>
+}
+
+
+
+
+
+
+
+
+

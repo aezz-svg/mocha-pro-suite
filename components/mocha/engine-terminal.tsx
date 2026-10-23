@@ -22,7 +22,7 @@ export function EngineTerminal({ className, limit }: { className?: string; limit
         aria-label="مخرجات المحرك"
         className="no-scrollbar flex-1 space-y-1.5 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed"
       >
-        {visible.length === 0 && <li className="text-white/30" dir="ltr">{'$ mocha --listen 127.0.0.1:8000'}</li>}
+        {visible.length === 0 && <li className="text-white/30" dir="ltr">بانتظار أوامر المعالجة المحلية</li>}
         {visible.map((entry) => (
           <li key={entry.id} className="flex gap-2">
             <span className="shrink-0 text-white/25" dir="ltr">
@@ -51,3 +51,4 @@ export function EngineTerminal({ className, limit }: { className?: string; limit
     </div>
   )
 }
+

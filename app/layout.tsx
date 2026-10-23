@@ -1,11 +1,9 @@
 import type { Metadata } from 'next'
-import { MochaProvider } from '@/components/mocha/mocha-provider'
-import { MochaGlobalStatus } from '@/components/mocha/mocha-global-status'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Mocha Pro Suite - محرك معالجة الوثائق السحابي',
-  description: 'منصة احترافية متكاملة لمعالجة وإدارة ملفات الـ PDF عبر سحابة Google Drive السيادية',
+  title: 'Mocha Pro — Local PDF Studio',
+  description: 'موقع Mocha Pro الرسمي لتنزيل تطبيق سطح المكتب ومتابعة تحديثاته ومعالجة ملفات PDF محلياً عبر Ghostscript.',
 }
 
 export default function RootLayout({
@@ -15,15 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className="bg-slate-950 text-slate-100 antialiased min-h-screen">
-        <MochaProvider>
-          {/* المحتوى الرئيسي لجميع صفحات التطبيق */}
-          {children}
-          
-          {/* شريط الحالة والنسبة المئوية العائم (يعمل في حالات الاستدعاء، المعالجة، والتحميل) */}
-          <MochaGlobalStatus />
-        </MochaProvider>
-      </body>
+      <body className="bg-slate-950 text-slate-100 antialiased min-h-screen">`n        {children}\n      </body>
     </html>
   )
 }

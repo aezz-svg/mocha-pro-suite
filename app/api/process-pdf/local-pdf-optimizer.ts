@@ -98,7 +98,7 @@ export async function executeExternalEngineCompress(
       if (!outputMeta.width || !outputMeta.height) continue;
 
       // تحديث بيانات الصورة بعد نجاح التحويل فقط.
-      object.contents = new Uint8Array(output);
+      Object.assign(object, { contents: new Uint8Array(output) });
 
       dict.set(PDFName.of('Width'), pdfDoc.context.obj(outputMeta.width));
       dict.set(PDFName.of('Height'), pdfDoc.context.obj(outputMeta.height));
@@ -118,3 +118,4 @@ export async function executeExternalEngineCompress(
     }
   }
 }
+
